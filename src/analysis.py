@@ -20,7 +20,7 @@ def avalanche_test(plaintext, ciphertext, key):
     n = min(len(bin_cipher_1), len(bin_cipher_2))
     pct = np.count_nonzero(bin_cipher_1[:n] != bin_cipher_2[:n]) / n * 100
 
-
+    # Print to terminal
     print(f"Avalanche: {pct:.2f}% bits changed")
 
     return pct
@@ -41,21 +41,23 @@ def entropy(data):
     return float(-np.sum(probs * np.log2(probs)))
 
 def entrophy_test(plaintext, ciphertext):
+    # Calculate Entropy
     entropy_ptx = entropy(plaintext)
     entropy_ctx = entropy(ciphertext)
     delta_crypt = round(abs(entropy_ptx - entropy_ctx), 4)
 
+    # Print to Terminal
     print(f"Entropy Plaintext: {entropy_ptx:.4f}")
     print(f"Entropy Ciphertext: {entropy_ctx:.4f}")
     print(f"Difference in Entropy: {delta_crypt}")
 
-
     return entropy_ptx, entropy_ctx
 
 def histogram_test(plaintext, ciphertext, path="test/histogram"):
-
+    # Make directory if not exist
     os.makedirs(path, exist_ok=True)
 
+    # Create The Histograms
     plt.figure()
     plt.hist(np.frombuffer(plaintext, dtype=np.uint8), bins=256, range=(0,256), color='skyblue', edgecolor='black')
     plt.xlabel('Values')
