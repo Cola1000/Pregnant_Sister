@@ -76,8 +76,8 @@ def analysis(binary: bytes, key: str, path = "test/histogram"):
     ciphertext = encrypt(binary, key)
     plaintext = decrypt(ciphertext, key) 
 
-    print(plaintext[:50])
-    print(ciphertext[:50])
+    print(f"Plaintext: {plaintext[:50]}")
+    print(f"Ciphertext: {ciphertext[:50]}")
 
     avalanche_test(plaintext, ciphertext, key)
     entrophy_test(plaintext, ciphertext)
