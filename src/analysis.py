@@ -54,12 +54,14 @@ def entrophy_test(plaintext, ciphertext):
 
 def histogram_test(plaintext, ciphertext, path="test/histogram"):
 
+    os.makedirs(path, exist_ok=True)
+
     plt.figure()
     plt.hist(np.frombuffer(plaintext, dtype=np.uint8), bins=256, range=(0,256), color='skyblue', edgecolor='black')
     plt.xlabel('Values')
     plt.ylabel('Frequency')
     plt.title('Basic Histogram')
-    plt.savefig(os.path.join(path, f"plaintext_histogram.jpg"))
+    plt.savefig(os.path.join(path, "plaintext_histogram.jpg"))
     plt.close()
 
     plt.figure()
@@ -67,17 +69,15 @@ def histogram_test(plaintext, ciphertext, path="test/histogram"):
     plt.xlabel('Values')
     plt.ylabel('Frequency')
     plt.title('Basic Histogram')
-    plt.savefig(os.path.join(path, f"ciphertext_histogram.jpg"))
+    plt.savefig(os.path.join(path, "ciphertext_histogram.jpg"))
     plt.close()
 
-    pass
-
-def analysis(binary: bytes, key: str, path = None):
+def analysis(binary: bytes, key: str, path = "test/histogram"):
     ciphertext = encrypt(binary, key)
     plaintext = decrypt(ciphertext, key) 
 
-    print(plaintext[50:])
-    print(ciphertext[50:])
+    print(plaintext[:50])
+    print(ciphertext[:50])
 
     avalanche_test(plaintext, ciphertext, key)
     entrophy_test(plaintext, ciphertext)
