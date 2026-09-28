@@ -5,4 +5,4 @@ with open("test/berkas/image.jpg", "rb") as f:
 
 kunci = "00000000000000000000000000000000000"
 
-anal(data, kunci)
+anal(data, kunci, "test/histogram/image")
