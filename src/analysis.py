@@ -1,71 +1,86 @@
 import numpy as np
+import matplotlib.pyplot as plt
+import os
 
 from src.encrypt import encrypt
 from src.decrypt import decrypt
 
 def avalanche_test(plaintext, ciphertext, key):
     # Change 1 bit of the new plaintext
-    new_plaintext = '0' if plaintext[-1] == '1' else '1'
+    flipped = bytearray(plaintext)
+    flipped[0] ^= 0x80
 
     # Create second ciphertext
-    ciphertext_2 = encrypt(new_plaintext, key)
+    ciphertext_2 = encrypt(bytes(flipped), key)
 
     # Menghitung persentase perubahan bit
-    bin_cipher_1 = ' '.join(format(ord(char), '08b') for char in ciphertext)
-    bin_cipher_2 = ' '.join(format(ord(char), '08b') for char in ciphertext_2)
+    bin_cipher_1 = np.unpackbits(np.frombuffer(ciphertext, dtype=np.uint8))
+    bin_cipher_2 = np.unpackbits(np.frombuffer(ciphertext_2, dtype=np.uint8))
 
-    cipher_1_percentage = [
-        (bin_cipher_1.count("0")/len(bin_cipher_1))*100,
-        (bin_cipher_1.count("1")/len(bin_cipher_1))*100
-    ]
+    n = min(len(bin_cipher_1), len(bin_cipher_2))
+    pct = np.count_nonzero(bin_cipher_1[:n] != bin_cipher_2[:n]) / n * 100
 
-    cipher_2_percentage = [
-        ((bin_cipher_2.count("0"))/len(bin_cipher_1))*100,
-        ((bin_cipher_2.count("1"))/len(bin_cipher_1))*100
-    ]
 
-    print("Cipher (Unchanged) 0's percentage: " + cipher_1_percentage[0])
-    print("Cipher (Unchanged) 1's percentage: " + cipher_1_percentage[1])
-    print("Cipher (Changed) 0's percentage: " + cipher_2_percentage[0])
-    print("Cipher (Changed) 1's percentage: " + cipher_2_percentage[1])
+    print(f"Avalanche: {pct:.2f}% bits changed")
 
-    return 0
+    return pct
 
-def entropy(labels):
+def entropy(data):
     # Source - https://stackoverflow.com/q/15450192
     # Posted by blueSurfer, modified by community. See post 'Timeline' for change history
     # Retrieved 2026-09-28, License - CC BY-SA 3.0
-    """ Computes entropy of 0-1 vector. """
-    n_labels = len(labels)
 
-    if n_labels <= 1:
-        return 0
+    # I changed it a bit from the source
 
-    counts = np.bincount(labels)
-    probs = counts[np.nonzero(counts)] / n_labels
-    n_classes = len(probs)
+    arr = np.frombuffer(data, dtype=np.uint8)
+    if arr.size == 0 : return 0.0
 
-    if n_classes <= 1:
-        return 0
-    return - np.sum(probs * np.log(probs)) / np.log(n_classes)
+    probs = np.bincount(arr, minlength=256) / arr.size
+    probs = probs[probs>0]
+
+    return float(-np.sum(probs * np.log2(probs)))
 
 def entrophy_test(plaintext, ciphertext):
     entropy_ptx = entropy(plaintext)
     entropy_ctx = entropy(ciphertext)
-    delta_crypt = abs(entropy_ptx - entropy_ctx)
+    delta_crypt = round(abs(entropy_ptx - entropy_ctx), 4)
 
-    print("Entropy Plaintext: " + entropy_ptx)
-    print("Entropy Ciphertext: " + entropy_ctx)
-    print("Difference in Entropy: "+ delta_crypt)
+    print(f"Entropy Plaintext: {entropy_ptx:.4f}")
+    print(f"Entropy Ciphertext: {entropy_ctx:.4f}")
+    print(f"Difference in Entropy: {delta_crypt}")
 
-    return 0
 
-def analysis(binary, key):
+    return entropy_ptx, entropy_ctx
+
+def histogram_test(plaintext, ciphertext, path="test/histogram"):
+
+    plt.figure()
+    plt.hist(np.frombuffer(plaintext, dtype=np.uint8), bins=256, range=(0,256), color='skyblue', edgecolor='black')
+    plt.xlabel('Values')
+    plt.ylabel('Frequency')
+    plt.title('Basic Histogram')
+    plt.savefig(os.path.join(path, f"plaintext_histogram.jpg"))
+    plt.close()
+
+    plt.figure()
+    plt.hist(np.frombuffer(ciphertext, dtype=np.uint8), bins=256, range=(0,256), color='green', edgecolor='black')
+    plt.xlabel('Values')
+    plt.ylabel('Frequency')
+    plt.title('Basic Histogram')
+    plt.savefig(os.path.join(path, f"ciphertext_histogram.jpg"))
+    plt.close()
+
+    pass
+
+def analysis(binary: bytes, key: str, path = None):
     ciphertext = encrypt(binary, key)
     plaintext = decrypt(ciphertext, key) 
 
+    print(plaintext[50:])
+    print(ciphertext[50:])
+
     avalanche_test(plaintext, ciphertext, key)
     entrophy_test(plaintext, ciphertext)
-    histogram_test()
+    histogram_test(plaintext, ciphertext, path)
 
     return 0

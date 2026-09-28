@@ -7,9 +7,14 @@ Symmetric Key Cryptography Using Cellular Automaton
 Python 3.13.
 
 ## Dependencies
-Aku harap gaada sih
+matplotlib
 
 ## Cara Menjalankan
+```bash
+python -m venv ./venv
+./venv/Scripts/activate
+pip install -r requirements.txt
+```
 
 ### Menjalankan Test
 ```bash 
