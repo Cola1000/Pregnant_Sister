@@ -47,7 +47,7 @@ def entrophy_test(plaintext, ciphertext):
     delta_crypt = round(entropy_ctx - entropy_ptx, 4) # Technically ctx SHOULD be higher than ptx, so yeah
 
     # Print to Terminal
-    print(f"Entropy Plaintext: {entropy_ptx:.4f}")
+    print(f"Entropy Plaintext (max 8.0) : {entropy_ptx:.4f}")
     print(f"Entropy Ciphertext (max 8.0): {entropy_ctx:.4f}")
     print(f"Difference in Entropy: {delta_crypt}")
 
