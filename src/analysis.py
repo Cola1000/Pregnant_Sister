@@ -86,3 +86,16 @@ def analysis(binary: bytes, key: str, path = "test/histogram"):
     histogram_test(plaintext, ciphertext, path)
 
     return 0
+
+def saveCipher(plaintext: bytes, key: str, path: str, save_decrypt : bool = False):
+    msg = encrypt(plaintext,key)
+    with open(path, "wb") as f:
+        f.write(msg)
+
+    os.makedirs("test/decrypted_message", exist_ok=True)
+    if save_decrypt:
+        msg = decrypt(msg,key)
+        with open("test/decrypted_message/restored."+path[-3:], "wb") as f:
+            f.write(msg)
+
+    return 0
