@@ -17,5 +17,5 @@ def decrypt(data, key, mode="CBC", nonce_size=32) -> bytes:
     decoded = base64.b64decode(data) # ct
     nonce = decoded[-nonce_size:]
     round_keys = derive_round_keys(key, nonce)
-    pt = decrypt_blocks(data, round_keys, mode, nonce)
+    pt = decrypt_blocks(decoded[:-nonce_size], round_keys, mode, nonce)
     return unpad(pt)
