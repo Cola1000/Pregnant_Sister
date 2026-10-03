@@ -1,9 +1,12 @@
-from automaton import evolve, bytes_to_grid, grid_to_bytes
-from spn import f_spn  # f_spn(half, round_key):
-from utils import xor_bytes
+from src.automaton import evolve, bytes_to_grid, grid_to_bytes
+from src.spn import f_spn  # f_spn(half, round_key):
+from src.utils import xor_bytes
 
+ROUNDS = list(range(1,19)) # list of indices
 
 def f_gol(half, round_key, generations=4) -> bytes:
+    # Biar bisa ngetes di komen dulu
+
     rxor = xor_bytes(half, round_key)
     
     grid = bytes_to_grid(rxor, rows=8, cols=16)
@@ -14,10 +17,10 @@ def f_gol(half, round_key, generations=4) -> bytes:
     out = xor_bytes(flattened, half)
 
     return out
+    # return half
 
 
 def round_function(half, round_key, round_index, total_rounds=18) -> bytes:
-    # TODO: pastiin indexing 0 based or 1
     if round_index == 1 or round_index == total_rounds:
         return f_gol(half, round_key)
     else:
@@ -28,9 +31,9 @@ def round_function(half, round_key, round_index, total_rounds=18) -> bytes:
 # feistel for encrypt and decrypt
 # ref: https://www.youtube.com/live/8l9xAvuGJFo
 def process_block(block, round_keys, is_decrypt = False) -> bytes:
-    rounds = list(range(1,19)) # list of indices
     if is_decrypt:
-        rounds = rounds[::-1]
+        rounds = ROUNDS[::-1]
+    else: rounds = ROUNDS
 
 
     # bytes
