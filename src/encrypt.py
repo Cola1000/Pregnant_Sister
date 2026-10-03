@@ -26,7 +26,7 @@ def encrypt(data, key, mode="CBC", nonce_size=32) -> bytes:
     round_keys = derive_round_keys(key, nonce)
 
     ct = encrypt_blocks(data, round_keys, mode, nonce)
-    ct += nonce
+    ct = nonce + ct
 
     return base64.b64encode(ct)
 
