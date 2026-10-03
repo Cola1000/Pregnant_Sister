@@ -1,7 +1,8 @@
 from src.feistel import process_block
-from src.utils import split_blocks, xor_bytes
+from src.spn import xor_bytes
 
-
+def split_blocks(data, block_size=32) -> list[bytes]:
+    return [data[i:i + block_size] for i in range(0, len(data), block_size)]
 
 # each mode functions returns bytes
 # ref: 

@@ -1,6 +1,5 @@
 from src.automaton import evolve, bytes_to_grid, grid_to_bytes
-from src.spn import f_spn  # f_spn(half, round_key):
-from src.utils import xor_bytes
+from src.spn import f_spn, xor_bytes  # f_spn(half, round_key):
 
 ROUNDS = list(range(1,19)) # list of indices
 

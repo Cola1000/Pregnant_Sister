@@ -1,4 +1,22 @@
-from src.utils import xor_bytes, bytes_to_matrix, matrix_to_bytes
+import operator
+import math
+
+# utils
+def xor_bytes(a, b) -> bytes:
+    length = min(len(a), len(b))
+    if length == 0:
+        return b""
+    return bytes(map(operator.xor, a[:length], b[:length]))
+
+
+def bytes_to_matrix(data, size=16) -> list[list]:
+    n = math.isqrt(size)
+    return [list(data[i:i+n]) for i in range(0, size, n)]
+
+def matrix_to_bytes(m) -> bytes:
+    return bytes(b for row in m for b in row) # sum concatenates matrix elements to the empty list
+
+
 
 # ref: https://github.com/grwna/cryptosystem-complexity-analysis/blob/main/src/aes_rounds.py 
 
