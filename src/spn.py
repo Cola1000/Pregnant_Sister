@@ -1,4 +1,4 @@
-from utils import xor_bytes, bytes_to_matrix, matrix_to_bytes
+from src.utils import xor_bytes, bytes_to_matrix, matrix_to_bytes
 
 # ref: https://github.com/grwna/cryptosystem-complexity-analysis/blob/main/src/aes_rounds.py 
 
