@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import time
 
 from src.encrypt import encrypt
 from src.decrypt import decrypt
@@ -75,8 +76,13 @@ def histogram_test(plaintext, ciphertext, path="test/histogram"):
     plt.close()
 
 def analysis(binary: bytes, key: str, path = "test/histogram"):
+    start_encrypt = time.time()
     ciphertext = encrypt(binary, key)
+    encrypt_time = time.time() - start_encrypt
+
+    start_decrypt = time.time()
     plaintext = decrypt(ciphertext, key) 
+    decrypt_time = time.time() - start_decrypt
 
     print(f"Plaintext: {plaintext[:50]}")
     print(f"Ciphertext: {ciphertext[:50]}")
@@ -84,6 +90,8 @@ def analysis(binary: bytes, key: str, path = "test/histogram"):
     avalanche_test(plaintext, ciphertext, key)
     entrophy_test(plaintext, ciphertext)
     histogram_test(plaintext, ciphertext, path)
+
+    print(f"Encryt + Decrypt Time (seconds): {encrypt_time:.2f} + {decrypt_time:.2f}")
 
     return 0
 
