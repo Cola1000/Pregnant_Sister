@@ -1,3 +1,4 @@
+import base64
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -5,14 +6,22 @@ import time
 
 from src.encrypt import encrypt
 from src.decrypt import decrypt
+from src.keygen import derive_round_keys
+from src.modes import encrypt_blocks
+from src.padding import pad
 
-def avalanche_test(plaintext, ciphertext, key):
+NONCE_SIZE = 32
+AVALANCHE_BYTES = 2048
+
+def avalanche_test(plaintext, ciphertext, key, mode="CBC"):
+    nonce, ciphertext = ciphertext[:NONCE_SIZE], ciphertext[NONCE_SIZE:]
+
     # Change 1 bit of the new plaintext
-    flipped = bytearray(plaintext)
+    flipped = bytearray(plaintext[:AVALANCHE_BYTES])
     flipped[0] ^= 0x80
+    flipped = pad(bytes(flipped))[:AVALANCHE_BYTES]
 
-    # Create second ciphertext
-    ciphertext_2 = encrypt(bytes(flipped), key)
+    ciphertext_2 = encrypt_blocks(flipped, derive_round_keys(key, nonce), mode, nonce)
 
     # Menghitung persentase perubahan bit
     bin_cipher_1 = np.unpackbits(np.frombuffer(ciphertext, dtype=np.uint8))
@@ -75,35 +84,44 @@ def histogram_test(plaintext, ciphertext, path="test/histogram"):
     plt.savefig(os.path.join(path, "ciphertext_histogram.jpg"))
     plt.close()
 
-def analysis(binary: bytes, key: str, path = "test/histogram"):
+def analysis(binary: bytes, key: str, path = "test/histogram", save_path: str = None):
     start_encrypt = time.time()
     ciphertext = encrypt(binary, key)
     encrypt_time = time.time() - start_encrypt
 
     start_decrypt = time.time()
-    plaintext = decrypt(ciphertext, key) 
+    plaintext = decrypt(ciphertext, key)
     decrypt_time = time.time() - start_decrypt
 
     print(f"Plaintext: {plaintext[:50]}")
     print(f"Ciphertext: {ciphertext[:50]}")
+    print(f"Decrypted matches original: {plaintext == binary}")
 
-    avalanche_test(plaintext, ciphertext, key)
-    entrophy_test(plaintext, ciphertext)
-    histogram_test(plaintext, ciphertext, path)
+    raw = base64.b64decode(ciphertext)
+
+    avalanche_test(plaintext, raw, key)
+    entrophy_test(plaintext, raw[NONCE_SIZE:])
+    histogram_test(plaintext, raw[NONCE_SIZE:], path)
 
     print(f"Encryt + Decrypt Time (seconds): {encrypt_time:.2f} + {decrypt_time:.2f}")
 
+    if save_path:
+        writeFiles(ciphertext, plaintext, save_path)
+
     return 0
+
+def writeFiles(ciphertext: bytes, restored: bytes | None, path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(ciphertext)
+
+    if restored is not None:
+        os.makedirs("test/decrypted_message", exist_ok=True)
+        with open("test/decrypted_message/restored"+os.path.splitext(path)[1], "wb") as f:
+            f.write(restored)
 
 def saveCipher(plaintext: bytes, key: str, path: str, save_decrypt : bool = False):
     msg = encrypt(plaintext,key)
-    with open(path, "wb") as f:
-        f.write(msg)
-
-    os.makedirs("test/decrypted_message", exist_ok=True)
-    if save_decrypt:
-        msg = decrypt(msg,key)
-        with open("test/decrypted_message/restored."+path[-3:], "wb") as f:
-            f.write(msg)
+    writeFiles(msg, decrypt(msg,key) if save_decrypt else None, path)
 
     return 0

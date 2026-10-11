@@ -6,5 +6,4 @@ with open("test/berkas/image.jpg", "rb") as f:
 
 kunci = "00000000000000000000000000000000000"
 
-anal(data, kunci, "test/histogram/image")
-sc(data, kunci, "test/encrypted_message/encrypted_image.jpg", True)
+anal(data, kunci, "test/histogram/image", "test/encrypted_message/encrypted_image.jpg")

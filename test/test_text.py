@@ -6,5 +6,4 @@ with open("test/berkas/glasses.txt", "rb") as f:
 
 kunci = "00000000000000000000000000000000000"
 
-anal(data, kunci, "test/histogram/text")
-sc(data, kunci, "test/encrypted_message/encrypted_text.txt", True)
+anal(data, kunci, "test/histogram/text", "test/encrypted_message/encrypted_text.txt")
