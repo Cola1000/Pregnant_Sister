@@ -42,9 +42,9 @@ def mix_key(key: str | bytes | bytearray, nonce: bytes) -> bytes:
 
     # mix with nonce bytes via rotation and xor
     mixed = bytearray(32)
-    nonce_len = len(nonce) if len(nonce) > 0 else 1
+    nonce_len = len(nonce)
     for i in range(32):
-        s = nonce[i % nonce_len]
+        s = nonce[i % nonce_len] if nonce_len > 0 else 0
         mixed[i] = rotate_byte(key_material[i], s % 8) ^ s
 
     return bytes(mixed)
@@ -59,38 +59,39 @@ def fill_grid(material: bytes, rows: int = 16, cols: int = 16) -> list[list[int]
     top, bottom = 0, rows - 1
     left, right = 0, cols - 1
     idx = 0
-    lap = 0
 
     while top <= bottom and left <= right:
         for c in range(left, right + 1):
-            grid[top][c] = (material[idx % mat_len] + lap) % 256
+            lap = idx // mat_len
+            grid[top][c] = (material[idx % mat_len] + 31 * lap) % 256
             idx += 1
         top += 1
 
         for r in range(top, bottom + 1):
-            grid[r][right] = (material[idx % mat_len] + lap) % 256
+            lap = idx // mat_len
+            grid[r][right] = (material[idx % mat_len] + 31 * lap) % 256
             idx += 1
         right -= 1
 
         if top <= bottom:
             for c in range(right, left - 1, -1):
-                grid[bottom][c] = (material[idx % mat_len] + lap) % 256
+                lap = idx // mat_len
+                grid[bottom][c] = (material[idx % mat_len] + 31 * lap) % 256
                 idx += 1
             bottom -= 1
 
         if left <= right:
             for r in range(bottom, top - 1, -1):
-                grid[r][left] = (material[idx % mat_len] + lap) % 256
+                lap = idx // mat_len
+                grid[r][left] = (material[idx % mat_len] + 31 * lap) % 256
                 idx += 1
             left += 1
-
-        lap += 1
 
     return grid
 
 
 def parity_grid(grid: list[list[int]]) -> list[list[int]]:
-    return [[val % 2 for val in row] for row in grid]
+    return [[val.bit_count() % 2 for val in row] for row in grid]
 
 
 def key_pattern(key: str | bytes | bytearray, nonce: bytes) -> list[list[int]]:
@@ -152,13 +153,11 @@ def derive_round_keys(
 
     round_keys = []
     for r in range(rounds):
-        if r > 0:
-            # shifted nonce reinjection with round perturbation
-            shifted_nonce = shift_nonce(nonce, r)
-            reinj_nonce = bytes((b ^ ((r * 17) & 0xFF)) for b in shifted_nonce)
-            reinj_material = mix_key(key_bytes, reinj_nonce)
-            reinj_grid = matrix_to_grid(parity_grid(fill_grid(reinj_material, rows=16, cols=16)))
-            grid = xor_grids(grid, reinj_grid)
+        # shifted nonce reinjection with round perturbation
+        shifted_nonce = shift_nonce(nonce, r + 1)
+        reinj_nonce = bytes((b ^ (((r + 1) * 17) & 0xFF)) for b in shifted_nonce)
+        reinj_grid = matrix_to_grid(key_pattern(key_bytes, reinj_nonce))
+        grid = xor_grids(grid, reinj_grid)
 
         # Conway's GoL evolution on toroidal grid
         grid = evolve(grid, generations_per_round)

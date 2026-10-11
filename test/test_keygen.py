@@ -1,20 +1,22 @@
 import unittest
+
 from src.keygen import (
-    validate_key,
-    generate_nonce,
-    shift_nonce,
-    rotate_byte,
-    mix_key,
-    fill_grid,
-    parity_grid,
-    key_pattern,
-    xor_grids,
-    fold_bytes,
     derive_round_keys,
-    matrix_to_grid,
+    fill_grid,
+    fold_bytes,
+    generate_nonce,
     grid_to_matrix,
+    key_pattern,
+    matrix_to_grid,
+    mix_key,
+    parity_grid,
+    rotate_byte,
+    shift_nonce,
+    validate_key,
+    xor_grids,
 )
 from src.types import Grid
+
 
 class TestKeyGen(unittest.TestCase):
     def setUp(self):
@@ -69,6 +71,9 @@ class TestKeyGen(unittest.TestCase):
         # Different nonce produces different mix
         m3 = mix_key(self.key_bytes, b"\x02" * 32)
         self.assertNotEqual(m1, m3)
+        # Handles empty nonce without crashing
+        m_empty = mix_key(self.key_bytes, b"")
+        self.assertEqual(len(m_empty), 32)
 
     def test_fill_grid_dimensions_and_spiral(self):
         material = bytes(range(32))
@@ -76,19 +81,23 @@ class TestKeyGen(unittest.TestCase):
         self.assertEqual(len(grid), 16)
         for row in grid:
             self.assertEqual(len(row), 16)
-        # Top-left is first element
+        # Top-left is first element (lap 0)
         self.assertEqual(grid[0][0], material[0])
-        # Top-right is 16th element (idx 15)
+        # Top-right is 16th element (idx 15, lap 0)
         self.assertEqual(grid[0][15], material[15])
+        # idx 32 (first element of lap 1) gets + (31 * 1)
+        self.assertEqual(grid[15][13], (material[0] + 31) % 256)
 
     def test_parity_grid(self):
         grid = [
             [0, 1, 2, 3],
             [4, 5, 6, 7]
         ]
+        # popcount-parity: count of 1-bits % 2
+        # 0:0, 1:1, 2(10b):1, 3(11b):0, 4(100b):1, 5(101b):0, 6(110b):0, 7(111b):1
         expected = [
-            [0, 1, 0, 1],
-            [0, 1, 0, 1]
+            [0, 1, 1, 0],
+            [1, 0, 0, 1]
         ]
         self.assertEqual(parity_grid(grid), expected)
 
