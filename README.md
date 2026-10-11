@@ -5,6 +5,9 @@ Symmetric Key Cryptography Using Cellular Automaton
 
 Symmetric block cipher menggunakan Conway's Game of Life (cellular automaton) saat generate keys dan dalam round function Feistel algorithm. Seatiap 256 bit block melewati 18 round Feistel network (2 GoL + 16 AES-style substitution-permutation). Round key didapatkan dari mix key (>=32 bytes) dengan nonce 32 bytes.
 
+## Dokumentasi API
+**https://cola1000.github.io/Pregnant_Sister/**
+
 ## Tech Stack
 Python 3.13.
 
@@ -33,7 +36,6 @@ pip install -r requirements.txt
 python -m test.test_text        # analisis file teks
 python -m test.test_image       # analisis file gambar
 python -m test.test_video       # analisis file video
-python -m test.test_security    # evaluasi keamanan algoritma
 python -m test.test_keygen      # unit test key schedule
 python -m test.test_automaton   # unit test Game of Life
 python -m test.test_encrypt     # round-trip semua mode untuk semua file
