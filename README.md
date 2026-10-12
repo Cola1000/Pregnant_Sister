@@ -36,6 +36,7 @@ pip install -r requirements.txt
 python -m test.test_text        # analisis file teks
 python -m test.test_image       # analisis file gambar
 python -m test.test_video       # analisis file video
+python -m test.test_security    # cipher security testing
 python -m test.test_keygen      # unit test key schedule
 python -m test.test_automaton   # unit test Game of Life
 python -m test.test_encrypt     # round-trip semua mode untuk semua file
