@@ -1,3 +1,4 @@
+import hashlib
 import secrets
 
 from src.automaton import evolve, grid_to_bytes
@@ -35,10 +36,8 @@ def rotate_byte(b: int, rot: int) -> int:
 def mix_key(key: str | bytes | bytearray, nonce: bytes) -> bytes:
     key_bytes = validate_key(key)
 
-    # fold key into 32 bytes if longer than 32
-    key_material = bytearray(key_bytes[:32])
-    for i in range(32, len(key_bytes)):
-        key_material[i % 32] ^= key_bytes[i]
+    # hash key into 32 bytes
+    key_material = hashlib.sha256(key_bytes).digest()
 
     # mix with nonce bytes via rotation and xor
     mixed = bytearray(32)
@@ -163,7 +162,7 @@ def derive_round_keys(
         grid = evolve(grid, generations_per_round)
 
         # 32 bytes (256-bit grid) folded to 16 bytes (128-bit round key)
-        evolved_bytes = grid_to_bytes(grid)
-        round_keys.append(fold_bytes(evolved_bytes))
+        whitened_bytes = grid_to_bytes(xor_grids(grid, reinj_grid))
+        round_keys.append(fold_bytes(whitened_bytes))
 
     return round_keys

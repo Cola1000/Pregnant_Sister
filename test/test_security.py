@@ -135,19 +135,24 @@ def test_differential():
 
 
 def test_key_schedule():
-    ones = total = 0
-    for _ in range(100):
-        for rk in derive_round_keys(rand_bytes(32), rand_bytes(32)):
-            ones += weight(rk)
-            total += 128
-    report(abs(ones / total - 0.5) < 0.02, f"Round-key bit density: {ones / total:.4f} (ideal 0.5)")
+    round_keys = [rk for _ in range(100) for rk in derive_round_keys(rand_bytes(32), rand_bytes(32))]
+    density = sum(weight(rk) for rk in round_keys) / (128 * len(round_keys))
+    report(abs(density - 0.5) < 0.02, f"Round-key bit density: {density:.4f} (ideal 0.5)")
+
+    counts = np.bincount(np.frombuffer(b"".join(round_keys), np.uint8), minlength=256)
+    probs = counts[counts > 0] / counts.sum()
+    ent = float(-np.sum(probs * np.log2(probs)))
+    report(ent > 7.98, f"Round-key byte entropy: {ent:.4f}/8 (random bytes, same sample size: ~7.99)")
 
     ct = encrypt(b"top secret", b"my secret key that is 32 bytes!!" * 2)
     try:
         leaked = decrypt(ct, b"A" * 64)
     except ValueError:
         leaked = None
-    report(leaked is None, f"Key X||X decrypted with unrelated key 'A'*64 (both fold to zero): {leaked}")
+    if leaked == b"top secret":
+        report(False, f"Key X||X decrypted with unrelated key 'A'*64 (both fold to zero): {leaked}")
+    else:
+        report(True, "Keys X||X and 'A'*64 are not interchangeable")
 
 
 def test_integrity():

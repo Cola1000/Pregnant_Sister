@@ -3,3 +3,4 @@ __pycache__
 venv/
 test/decrypted_message/
 test/encrypted_message/
+docs/tex/build-remote.bat
