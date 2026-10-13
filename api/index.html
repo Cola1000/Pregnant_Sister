@@ -44,11 +44,14 @@
     <div class="mobile-menu-closer"></div>
     <div class="content-menu">
         <div class="content-infos">
-            <div class="info"><b>Last Updated:</b> 11 Okt 2026</div>
+            <div class="info"><b>Last Updated:</b> 13 Okt 2026</div>
         </div>
         <ul>
             <li class="scroll-to-link active" data-target="content-get-started">
-                <a>MULAI</a>
+                <a>Mulai</a>
+            </li>
+            <li class="scroll-to-link" data-target="content-install">
+                <a>Instalasi</a>
             </li>
             <li class="scroll-to-link" data-target="content-encrypt">
                 <a>encrypt()</a>
@@ -56,11 +59,20 @@
             <li class="scroll-to-link" data-target="content-decrypt">
                 <a>decrypt()</a>
             </li>
+            <li class="scroll-to-link" data-target="content-format">
+                <a>Format ciphertext</a>
+            </li>
+            <li class="scroll-to-link" data-target="content-modes">
+                <a>Mode operasi</a>
+            </li>
+            <li class="scroll-to-link" data-target="content-examples">
+                <a>Contoh penggunaan</a>
+            </li>
             <li class="scroll-to-link" data-target="content-errors">
                 <a>Errors</a>
             </li>
             <li class="scroll-to-link" data-target="content-notes">
-                <a>Catatan</a>
+                <a>Catatan keamanan</a>
             </li>
         </ul>
     </div>
@@ -70,17 +82,69 @@
     <div class="content">
         <div class="overflow-hidden content-section" id="content-get-started">
             <h1>Mulai</h1>
+            <pre><code class="python">
+from src.encrypt import encrypt
+from src.decrypt import decrypt
+
+key = "kunci-rahasia-minimal-32-byte!!!"   # 32 byte
+
+ct = encrypt("My Sister is Pregnant, I'm gonna be a dad!", key)
+print(ct)
+# b'PS69/Knx2LHg2aIomY3MOmRSZOtyxZN3ukMZ...'
+# (berbeda di setiap pemanggilan)
+
+pt = decrypt(ct, key)
+print(pt)                   # b'My Sister is Pregnant, I'm gonna be a dad!'
+print(pt.decode("utf-8"))   # My Sister is Pregnant, I'm gonna be a dad!
+                </code></pre>
+            <p>
+                Pregnant_Sister adalah symmetric block cipher 256 bit yang memakai Conway's Game of Life (cellular automaton). Setiap blok melewati 18 ronde jaringan Feistel: 2 ronde Game of Life dan 16 ronde substitution-permutation gaya AES. Round key diturunkan dari kunci (minimal 32 byte, di-hash dengan SHA-256) dan nonce acak 32 byte yang dibuat ulang di setiap enkripsi.
+            </p>
+            <p>
+                API ini berupa pustaka Python, bukan layanan HTTP. Antarmuka utamanya hanya dua fungsi: <code class="higlighted">encrypt()</code> dan <code class="higlighted">decrypt()</code>. Keduanya menerima teks maupun data biner, dan memakai mode CBC jika mode tidak disebutkan.
+            </p>
+            <table class="central-overflow-x">
+                <thead>
+                <tr>
+                    <th>Spesifikasi</th>
+                    <th>Nilai</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr><td>Ukuran blok</td><td>256 bit (32 byte)</td></tr>
+                <tr><td>Struktur</td><td>Feistel 18 ronde (Game of Life pada ronde 1 dan 18, SPN pada ronde 2&ndash;17)</td></tr>
+                <tr><td>Kunci</td><td>Minimal 32 byte, di-hash SHA-256 menjadi 256 bit</td></tr>
+                <tr><td>Nonce</td><td>32 byte acak per enkripsi</td></tr>
+                <tr><td>Mode operasi</td><td>ECB, CBC (default), CFB, OFB, CTR</td></tr>
+                <tr><td>Padding</td><td>PKCS#7, kelipatan 32 byte</td></tr>
+                <tr><td>Keluaran</td><td>Base64 dari nonce + ciphertext</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="overflow-hidden content-section" id="content-install">
+            <h2>Instalasi</h2>
             <pre><code class="bash">
-# Instalasi
+# Opsi 1: unduh rilis (hanya kode pustaka)
+# dari halaman Releases di GitHub, lalu
+# ekstrak pregnant_sister-vX.Y.Z.zip
+cd pregnant_sister
+python -m venv venv
+source venv/bin/activate      # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+# Opsi 2: clone repositori (beserta test dan laporan)
 git clone https://github.com/Cola1000/Pregnant_Sister.git
 cd Pregnant_Sister
 pip install -r requirements.txt
                 </code></pre>
             <p>
-                Pregnant_Sister adalah symmetric block cipher yang memakai Conway's Game of Life (cellular automaton). Setiap blok 256 bit melewati 18 ronde jaringan Feistel (2 ronde Game of Life + 16 ronde substitution-permutation gaya AES). Round key diturunkan dari kunci (minimal 32 byte) dan nonce acak 32 byte.
+                Cara termudah adalah mengunduh berkas <code class="higlighted">pregnant_sister-vX.Y.Z.zip</code> dari halaman <a href="https://github.com/Cola1000/Pregnant_Sister/releases/latest">Releases</a>. Rilis hanya berisi folder <code class="higlighted">src</code> dan <code class="higlighted">requirements.txt</code>. Rilis baru dibuat otomatis setiap kali kode pustaka di branch <code class="higlighted">main</code> berubah.
             </p>
             <p>
-                API ini berupa pustaka Python dengan dua fungsi: <code class="higlighted">encrypt()</code> dan <code class="higlighted">decrypt()</code>. Jalankan kode dari root repositori agar paket <code class="higlighted">src</code> dapat diimpor.
+                Dibutuhkan Python 3.10 atau lebih baru (dikembangkan dengan Python 3.13). Fungsi <code class="higlighted">encrypt()</code> dan <code class="higlighted">decrypt()</code> hanya memakai pustaka standar. Paket <code class="higlighted">numpy</code> dan <code class="higlighted">matplotlib</code> dari <code class="higlighted">requirements.txt</code> hanya dibutuhkan oleh modul analisis <code class="higlighted">src.analysis</code>.
+            </p>
+            <p>
+                Jalankan skrip dari folder yang berisi folder <code class="higlighted">src</code> (misalnya <code class="higlighted">python skrip.py</code> dengan <code class="higlighted">skrip.py</code> diletakkan di samping <code class="higlighted">src</code>), agar <code class="higlighted">from src.encrypt import encrypt</code> dapat diimpor.
             </p>
         </div>
         <div class="overflow-hidden content-section" id="content-encrypt">
@@ -89,13 +153,20 @@ pip install -r requirements.txt
 from src.encrypt import encrypt
 
 key = "kunci-rahasia-minimal-32-byte!!!"
-ct = encrypt("Halo, dunia!", key, mode="CBC")
 
-print(ct)
-# b'NW10XhnXn70ewiROtrNSWJD2RfetdMe+lp/5DIfC...'
+# teks
+ct = encrypt("My Sister is Pregnant, I'm gonna be a dad!", key, mode="CBC")
+
+# data biner
+with open("foto.jpg", "rb") as f:
+    ct = encrypt(f.read(), key, mode="CTR")
+
+# simpan sebagai teks (Base64 aman untuk JSON/berkas)
+with open("foto.jpg.enc", "wb") as f:
+    f.write(ct)
                 </code></pre>
             <p>
-                Mengenkripsi data dan mengembalikan ciphertext dalam Base64. Nonce acak dibuat di setiap pemanggilan, jadi hasilnya selalu berbeda walaupun plaintext dan kuncinya sama.
+                Mengenkripsi data dan mengembalikan ciphertext dalam Base64. Nonce acak dibuat di setiap pemanggilan dan disisipkan di depan ciphertext, jadi hasilnya selalu berbeda walaupun plaintext dan kuncinya sama, dan nonce tidak perlu disimpan terpisah.
             </p>
             <p>
                 <code class="higlighted break-word">encrypt(data, key, mode="CBC", nonce_size=32) -&gt; bytes</code>
@@ -112,23 +183,23 @@ print(ct)
                 <tbody>
                 <tr>
                     <td>data</td>
-                    <td>str, bytes</td>
-                    <td>Plaintext. String di-encode dengan UTF-8.</td>
+                    <td>str, bytes, bytearray</td>
+                    <td>Plaintext. String di-encode dengan UTF-8. Boleh kosong.</td>
                 </tr>
                 <tr>
                     <td>key</td>
-                    <td>str, bytes</td>
-                    <td>Kunci rahasia, minimal 32 byte.</td>
+                    <td>str, bytes, bytearray</td>
+                    <td>Kunci rahasia, minimal 32 byte (string diukur setelah di-encode UTF-8). Kunci sepanjang apa pun di-hash dengan SHA-256.</td>
                 </tr>
                 <tr>
                     <td>mode</td>
                     <td>str</td>
-                    <td>(opsional - default: "CBC") Mode operasi: ECB, CBC, CFB, OFB, atau CTR.</td>
+                    <td>(opsional - default: "CBC") Mode operasi: ECB, CBC, CFB, OFB, atau CTR. Tidak membedakan huruf besar/kecil.</td>
                 </tr>
                 <tr>
                     <td>nonce_size</td>
                     <td>int</td>
-                    <td>(opsional - default: 32) Tidak dipakai, nonce selalu 32 byte.</td>
+                    <td>(opsional - default: 32) Tidak dipakai; nonce selalu 32 byte. Biarkan default.</td>
                 </tr>
                 </tbody>
             </table>
@@ -143,7 +214,7 @@ print(ct)
                 <tbody>
                 <tr>
                     <td>bytes</td>
-                    <td>Base64 dari nonce (32 byte) + ciphertext.</td>
+                    <td>Teks Base64 (ASCII) dari nonce (32 byte) + ciphertext. Panggil <code class="higlighted">.decode("ascii")</code> jika membutuhkan str.</td>
                 </tr>
                 </tbody>
             </table>
@@ -155,11 +226,17 @@ from src.decrypt import decrypt
 
 pt = decrypt(ct, key, mode="CBC")
 
-print(pt)                   # b'Halo, dunia!'
-print(pt.decode("utf-8"))   # Halo, dunia!
+print(pt)                   # b'My Sister is Pregnant, I'm gonna be a dad!'
+print(pt.decode("utf-8"))   # My Sister is Pregnant, I'm gonna be a dad!
+
+# berkas biner
+with open("foto.jpg.enc", "rb") as f:
+    data = decrypt(f.read(), key, mode="CTR")
+with open("foto-asli.jpg", "wb") as f:
+    f.write(data)
                 </code></pre>
             <p>
-                Mendekripsi ciphertext hasil <code class="higlighted">encrypt()</code> kembali menjadi plaintext. Nonce dibaca dari 32 byte pertama ciphertext.
+                Mendekripsi ciphertext hasil <code class="higlighted">encrypt()</code> kembali menjadi plaintext. Nonce dibaca dari 32 byte pertama, round key diturunkan ulang, lalu padding dibuang dan divalidasi.
             </p>
             <p>
                 <code class="higlighted break-word">decrypt(data, key, mode="CBC", nonce_size=32) -&gt; bytes</code>
@@ -177,22 +254,22 @@ print(pt.decode("utf-8"))   # Halo, dunia!
                 <tr>
                     <td>data</td>
                     <td>bytes, str</td>
-                    <td>Ciphertext Base64 hasil <code class="higlighted">encrypt()</code>.</td>
+                    <td>Ciphertext Base64 persis seperti hasil <code class="higlighted">encrypt()</code>.</td>
                 </tr>
                 <tr>
                     <td>key</td>
-                    <td>str, bytes</td>
+                    <td>str, bytes, bytearray</td>
                     <td>Kunci yang sama dengan saat enkripsi.</td>
                 </tr>
                 <tr>
                     <td>mode</td>
                     <td>str</td>
-                    <td>(opsional - default: "CBC") Harus sama dengan mode saat enkripsi.</td>
+                    <td>(opsional - default: "CBC") Harus sama dengan mode saat enkripsi, karena mode tidak disimpan di ciphertext.</td>
                 </tr>
                 <tr>
                     <td>nonce_size</td>
                     <td>int</td>
-                    <td>(opsional - default: 32) Panjang nonce di awal ciphertext.</td>
+                    <td>(opsional - default: 32) Panjang nonce di awal ciphertext. Harus 32.</td>
                 </tr>
                 </tbody>
             </table>
@@ -207,68 +284,168 @@ print(pt.decode("utf-8"))   # Halo, dunia!
                 <tbody>
                 <tr>
                     <td>bytes</td>
-                    <td>Plaintext asli. Gunakan <code class="higlighted">.decode("utf-8")</code> untuk mendapatkan teks.</td>
+                    <td>Plaintext asli, selalu bertipe bytes. Gunakan <code class="higlighted">.decode("utf-8")</code> untuk mendapatkan teks.</td>
                 </tr>
                 </tbody>
             </table>
         </div>
+        <div class="overflow-hidden content-section" id="content-format">
+            <h2>Format ciphertext</h2>
+            <pre><code class="python">
+import base64
+
+raw = base64.b64decode(ct)
+nonce, body = raw[:32], raw[32:]
+blocks = [body[i:i + 32] for i in range(0, len(body), 32)]
+
+# ukuran untuk plaintext n byte
+# raw  = 32 + 32 * (n // 32 + 1)
+# Base64  = 4 * ceil(raw / 3)
+                </code></pre>
+            <p>
+                Nilai kembalian <code class="higlighted">encrypt()</code> adalah Base64 dari <code class="higlighted">nonce (32 B) || C1 || C2 || ... || Cn</code>, dengan setiap blok Ci berukuran 32 byte. Padding PKCS#7 selalu menambah 1&ndash;32 byte, jadi plaintext yang panjangnya tepat kelipatan 32 tetap mendapat satu blok padding penuh. Semua mode memakai padding, sehingga ukuran ciphertext sama untuk kelima mode.
+            </p>
+            <table class="central-overflow-x">
+                <thead>
+                <tr>
+                    <th>Plaintext (byte)</th>
+                    <th>Raw (byte)</th>
+                    <th>Base64 (karakter)</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr><td>0&ndash;31</td><td>64</td><td>88</td></tr>
+                <tr><td>32&ndash;63</td><td>96</td><td>128</td></tr>
+                <tr><td>100</td><td>160</td><td>216</td></tr>
+                <tr><td>1.048.576 (1 MiB)</td><td>1.048.640</td><td>1.398.188</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="overflow-hidden content-section" id="content-modes">
+            <h2>Mode operasi</h2>
+            <pre><code class="python">
+for mode in ["ECB", "CBC", "CFB", "OFB", "CTR"]:
+    ct = encrypt(b"data", key, mode=mode)
+    assert decrypt(ct, key, mode=mode) == b"data"
+                </code></pre>
+            <p>
+                Nonce selalu dipakai untuk menurunkan round key. Pada mode selain ECB, nonce juga dipakai sebagai IV atau nilai awal counter. E adalah enkripsi satu blok.
+            </p>
+            <table class="central-overflow-x">
+                <thead>
+                <tr>
+                    <th>Mode</th>
+                    <th>Enkripsi</th>
+                    <th>Catatan</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr><td>ECB</td><td>Ci = E(Pi)</td><td>Blok plaintext identik menghasilkan blok ciphertext identik. Hindari untuk data berpola.</td></tr>
+                <tr><td>CBC</td><td>Ci = E(Pi xor Ci-1), C0 = nonce</td><td>Default.</td></tr>
+                <tr><td>CFB</td><td>Ci = Pi xor E(Ci-1), C0 = nonce</td><td>CFB blok penuh (256 bit).</td></tr>
+                <tr><td>OFB</td><td>Oi = E(Oi-1), Ci = Pi xor Oi, O0 = nonce</td><td>Enkripsi dan dekripsi identik.</td></tr>
+                <tr><td>CTR</td><td>Ci = Pi xor E(nonce + i - 1)</td><td>Nonce dibaca sebagai bilangan 256 bit big-endian.</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="overflow-hidden content-section" id="content-examples">
+            <h2>Contoh penggunaan</h2>
+            <pre><code class="python">
+import json
+import secrets
+from src.encrypt import encrypt
+from src.decrypt import decrypt
+
+# 1. Kunci acak yang kuat
+key = secrets.token_bytes(32)
+
+# 2. Mengirim ciphertext lewat JSON; simpan mode bersama ciphertext
+payload = json.dumps({
+    "mode": "CTR",
+    "ciphertext": encrypt("rahasia", key, mode="CTR").decode("ascii"),
+})
+msg = json.loads(payload)
+decrypt(msg["ciphertext"], key, mode=msg["mode"])   # b'rahasia'
+
+# 3. Menangani dekripsi yang gagal
+def safe_decrypt(ct, key, mode="CBC"):
+    try:
+        return decrypt(ct, key, mode)
+    except (ValueError, IndexError) as e:
+        raise ValueError("ciphertext, kunci, atau mode tidak cocok") from e
+                </code></pre>
+            <p>
+                <b>Kunci.</b> Gunakan kunci acak 32 byte dari <code class="higlighted">secrets.token_bytes(32)</code> dan simpan dengan aman. Kunci berupa string juga diterima selama panjangnya minimal 32 byte.
+            </p>
+            <p>
+                <b>Transport.</b> Keluaran Base64 aman dimasukkan ke JSON, basis data, atau berkas teks. Mode tidak tercatat di dalam ciphertext, jadi simpan atau sepakati mode bersama ciphertext.
+            </p>
+            <p>
+                <b>Dekripsi gagal.</b> Kunci atau mode yang salah biasanya memicu <code class="higlighted">ValueError</code> dari validasi padding. Plaintext kosong juga terdekripsi menjadi <code class="higlighted">b""</code>, jadi jangan memakai nilai kosong sebagai penanda kegagalan; tangkap exception-nya.
+            </p>
+        </div>
         <div class="overflow-hidden content-section" id="content-errors">
             <h2>Errors</h2>
             <p>
-                Exception yang dapat muncul dari <code class="higlighted">encrypt()</code> dan <code class="higlighted">decrypt()</code>:
+                Exception dan perilaku khusus dari <code class="higlighted">encrypt()</code> dan <code class="higlighted">decrypt()</code>:
             </p>
             <table>
                 <thead>
                 <tr>
-                    <th>Error</th>
-                    <th>Penyebab</th>
+                    <th>Kondisi</th>
+                    <th>Perilaku</th>
                 </tr>
                 </thead>
                 <tbody>
                 <tr>
-                    <td>ValueError</td>
-                    <td>
-                        Kunci kurang dari 32 byte, atau kunci/mode salah saat dekripsi sehingga padding tidak valid.
-                    </td>
+                    <td>Kunci kurang dari 32 byte</td>
+                    <td><code class="higlighted">ValueError: Key must be at least 32 bytes</code>, didahului cetakan <code class="higlighted">Error: invalid key</code>.</td>
                 </tr>
                 <tr>
-                    <td>TypeError</td>
-                    <td>
-                        Kunci bukan str/bytes, atau mode tidak dikenal saat enkripsi.
-                    </td>
+                    <td>Kunci bukan str/bytes</td>
+                    <td><code class="higlighted">TypeError: Key must be str or bytes</code>.</td>
                 </tr>
                 <tr>
-                    <td>binascii.Error</td>
-                    <td>
-                        Ciphertext bukan Base64 yang valid.
-                    </td>
+                    <td>Mode tidak dikenal</td>
+                    <td><code class="higlighted">encrypt()</code>: <code class="higlighted">TypeError</code>. <code class="higlighted">decrypt()</code>: mencetak <code class="higlighted">Unpad fail: data invalid</code> dan mengembalikan <code class="higlighted">b""</code>.</td>
                 </tr>
                 <tr>
-                    <td>IndexError</td>
-                    <td>
-                        Panjang ciphertext rusak (bukan kelipatan 32 byte) pada mode ECB atau CBC.
-                    </td>
+                    <td>Ciphertext bukan Base64</td>
+                    <td><code class="higlighted">binascii.Error</code> (turunan <code class="higlighted">ValueError</code>).</td>
+                </tr>
+                <tr>
+                    <td>Kunci atau mode salah, atau ciphertext diubah</td>
+                    <td>Biasanya <code class="higlighted">ValueError: Invalid padding ...</code>. Tidak dijamin: sekitar 1 dari 256 kasus menghasilkan data acak tanpa error.</td>
+                </tr>
+                <tr>
+                    <td>Panjang ciphertext bukan kelipatan 32 byte</td>
+                    <td>ECB/CBC: <code class="higlighted">IndexError</code>. CFB/OFB/CTR: mencetak <code class="higlighted">Unpad fail: data invalid</code> dan mengembalikan <code class="higlighted">b""</code>.</td>
                 </tr>
                 </tbody>
             </table>
         </div>
         <div class="overflow-hidden content-section" id="content-notes">
-            <h2>Catatan</h2>
+            <h2>Catatan keamanan</h2>
             <pre><code class="python">
-# Contoh: enkripsi berkas dengan kunci acak
-import secrets
+# Encrypt-then-MAC: tambahkan HMAC jika integritas dibutuhkan
+import hashlib, hmac, secrets
 
-key = secrets.token_bytes(32)
-with open("test/berkas/image.jpg", "rb") as f:
-    data = f.read()
+mac_key = secrets.token_bytes(32)        # terpisah dari key
+ct = encrypt(data, key)
+tag = hmac.new(mac_key, ct, hashlib.sha256).digest()
 
-ct = encrypt(data, key, mode="CTR")
-assert decrypt(ct, key, mode="CTR") == data
+# di sisi penerima
+expected = hmac.new(mac_key, ct, hashlib.sha256).digest()
+if not hmac.compare_digest(tag, expected):
+    raise ValueError("ciphertext telah diubah")
+pt = decrypt(ct, key)
                 </code></pre>
             <ul>
-                <li>Mode tidak disimpan di dalam ciphertext, jadi enkripsi dan dekripsi harus memakai mode yang sama.</li>
-                <li>Ciphertext tidak memiliki MAC, sehingga perubahan pada ciphertext tidak selalu terdeteksi.</li>
-                <li>Kunci yang lebih dari 32 byte dilipat dengan XOR menjadi 32 byte. Gunakan kunci acak 32 byte, misalnya <code class="higlighted">secrets.token_bytes(32)</code>.</li>
+                <li><b>Tidak ada autentikasi.</b> Ciphertext tidak memiliki MAC, sehingga perubahan pada ciphertext tidak selalu terdeteksi. Tambahkan HMAC atas ciphertext (encrypt-then-MAC) dengan kunci terpisah jika integritas dibutuhkan.</li>
+                <li><b>Kunci.</b> Kunci di-hash dengan SHA-256, jadi kunci panjang apa pun dipakai seluruhnya. SHA-256 bukan KDF kata sandi; jika kunci berasal dari kata sandi, turunkan dulu dengan PBKDF2 atau Argon2.</li>
+                <li><b>ECB.</b> Round key berbeda untuk setiap pesan, tetapi blok identik di dalam satu pesan tetap menghasilkan ciphertext identik. Gunakan CBC atau CTR.</li>
+                <li><b>Mode.</b> Mode tidak disimpan di ciphertext; pengirim dan penerima harus memakai mode yang sama.</li>
+                <li><b>Kinerja.</b> Implementasi murni Python berjalan sekitar 60&ndash;70 KB/s, sehingga cocok untuk data hingga beberapa MB.</li>
             </ul>
         </div>
     </div>
