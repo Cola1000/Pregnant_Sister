@@ -32,6 +32,8 @@ pip install -r requirements.txt
 ```
 
 ### Menjalankan Test
+> Folder `test/` hanya ada di repositori GitHub, tidak ikut di arsip rilis. Clone/Fork repositori untuk menjalankan test.
+
 ```bash
 python -m test.test_text        # analisis file teks
 python -m test.test_image       # analisis file gambar
