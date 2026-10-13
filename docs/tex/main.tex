@@ -1,40 +1,46 @@
-\documentclass{report}
+\documentclass[11pt,a4paper]{report}
 \input{preamble}
 
 \hypersetup{
     colorlinks=true,
     linkcolor=black,
-    filecolor=magenta,      
-    urlcolor=cyan,
-    pdftitle={Tugas Besar IF4031 Arsitektur Aplikasi Terdistribusi},
+    citecolor=blue!60!black,
+    filecolor=magenta,
+    urlcolor=cyan!50!black,
+    pdftitle={Laporan Tugas 2 IF4020 Kriptografi - Pregnant_Sister},
 }
+
+\newcommand{\anggotasatu}{M Rayhan Farrukh}
+\newcommand{\nimsatu}{13523035}
+\newcommand{\anggotadua}{Darrel Adinarya S}
+\newcommand{\nimdua}{13523061}
+\newcommand{\anggotatiga}{Rhio Bimo Prakoso S}
+\newcommand{\nimtiga}{13523123}
+\newcommand{\anggotaempat}{Frederiko Eldad M}
+\newcommand{\nimempat}{13523147}
 
 \begin{document}
 
-% --- Mulai Cover ---
 \begin{titlepage}
     \centering
-    
-    % Judul Mata Kuliah
-    \Large \textsf{Tugas Besar IF4031 Arsitektur Aplikasi Terdistribusi} \\
-    \vspace{1.5cm}
 
-    % Judul Project
-    \huge \textbf{JagaWarga: \\ Aplikasi Pelaporan Warga Dengan Arsitektur Terdistribusi} \\
-    \vspace{1.5cm}
+    \Large \textsf{Laporan Tugas 2 IF4020 Kriptografi} \\[0.3cm]
+    \large \textsf{Perancangan Block Cipher Baru} \\
+    \vspace{1.2cm}
 
-    % Foto cover
-    \includegraphics[width=0.4\textwidth]{cover.jpg} \\ 
-    \vspace{1.5cm}
+    {\Huge \textbf{\algname}} \\[0.4cm]
+    \large \textit{Block Cipher 256-bit Berbasis Cellular Automaton\\(Conway's Game of Life) dan Jaringan Feistel Hibrida} \\
+    \vspace{1.2cm}
 
-    % Penulis
-    \large \textit{Disusun oleh: Kelompok anomali\_nangor} \\
-    \vspace{0.5cm}
-    
-    \begin{tabular}{r l}
-        Rhio Bimo Prakoso Sugiyanto & 13523123 \\
-        Frederiko Eldad Mugiyono & 13523147 \\
-        Naufarrel Zhafif Abhista & 13523149
+    \includegraphics[width=0.62\textwidth, height=6.8cm, keepaspectratio]{cover.jpeg} \\
+    \vspace{1.0cm}
+
+    \large \textit{Disusun oleh:} \\[0.3cm]
+    \begin{tabular}{l l}
+        \anggotasatu  & \nimsatu \\
+        \anggotadua   & \nimdua \\
+        \anggotatiga  & \nimtiga \\
+        \anggotaempat & \nimempat
     \end{tabular}
 
     \vfill
@@ -43,18 +49,41 @@
     Program Studi Teknik Informatika \\
     Sekolah Teknik Elektro dan Informatika \\
     Institut Teknologi Bandung \\
-    2025
+    2026
 \end{titlepage}
+
+\ifnum0\pdffilesize{images/pernyataan.pdf}>0
+    \AddToHookNext{shipout/background}{\put(0,-\paperheight){\includegraphics[width=\paperwidth,height=\paperheight]{pernyataan.pdf}}}%
+    \thispagestyle{empty}\null
+\else
+    \thispagestyle{empty}
+    \vspace*{\fill}
+    \begin{center}
+        \isi{Halaman pernyataan}\\[0.2cm]
+        \small ganti \code{docs/tex/images/pernyataan.pdf} MANA HALAMAN PERNYATAANYA WOIIII
+    \end{center}
+    \vspace*{\fill}
+\fi
+\clearpage
 
 \pagenumbering{roman}
 \tableofcontents
+\listoffigures
+\listoftables
 \newpage
 
 \pagenumbering{arabic}
 \setcounter{page}{1}
 
 \input{contents/01-pendahuluan.tex}
-\input{contents/02-skpl.tex}
+\input{contents/02-dasar-teori.tex}
 \input{contents/03-perancangan.tex}
+\input{contents/04-implementasi.tex}
+\input{contents/05-analisis-keamanan.tex}
+\input{contents/06-kesimpulan.tex}
+\input{contents/07-daftar-pustaka.tex}
+
+\appendix
+\input{contents/08-lampiran.tex}
 
 \end{document}

@@ -1,25 +1,65 @@
 \chapter{Pendahuluan}
 
 \section{Latar Belakang}
-Pertumbuhan populasi perkotaan yang pesat membawa tantangan besar dalam pengelolaan infrastruktur, keamanan, dan kebersihan lingkungan. Kota dengan estimasi penduduk sebanyak 2,5 juta jiwa memerlukan mekanisme komunikasi yang efisien antara warga dan pemerintah. Sistem pelaporan masalah konvensional seringkali mengalami hambatan dalam hal kecepatan respon, transparansi status, dan ketepatan distribusi laporan ke pihak yang berwenang.
+\textit{Block cipher} adalah primitif kriptografi kunci simetris yang mengenkripsi data dalam satuan blok berukuran tetap. Hampir semua protokol pengamanan data modern, mulai dari TLS, enkripsi diska, hingga pesan instan, bergantung pada \textit{block cipher} yang dipadukan dengan mode operasi tertentu. Keamanan sebuah \textit{block cipher} ditentukan oleh seberapa baik ia mewujudkan dua prinsip Shannon \cite{shannon1949}, yaitu \textit{confusion} (hubungan antara kunci dan \textit{ciphertext} dibuat serumit mungkin) dan \textit{diffusion} (pengaruh satu bit \textit{plaintext} disebar ke sebanyak mungkin bit \textit{ciphertext}).
 
-Aplikasi JagaWarga dirancang sebagai platform pelaporan terintegrasi yang memungkinkan warga melaporkan permasalahan mulai dari kriminalitas hingga perawatan fasilitas umum. Namun, mengelola basis pengguna sebesar 2,5 juta dengan volume data multimedia yang masif dan kebutuhan akan fitur privasi (anonimitas) menimbulkan kompleksitas teknis yang signifikan. Arsitektur monolitik dianggap tidak lagi memadai untuk menangani kebutuhan ini karena keterbatasan dalam skalabilitas horizontal dan risiko \textit{single point of failure}.
+Rancangan \textit{block cipher} yang dipakai saat ini umumnya menggunakan komponen yang sudah dipelajari secara mendalam, seperti Kotak-S, permutasi, dan operasi aritmetika modular. Di sisi lain, \textit{cellular automaton} (CA) telah lama diusulkan sebagai sumber ketidakteraturan untuk kriptografi \cite{wolfram1986}. CA terdiri atas sel-sel sederhana yang diperbarui berdasarkan aturan lokal, tetapi dapat menghasilkan perilaku global yang kompleks dan sulit diprediksi. Conway's Game of Life (GoL) \cite{gardner1970} adalah CA dua dimensi yang paling dikenal. Aturannya sangat sederhana (B3/S23), tetapi perilakunya cukup kompleks sehingga GoL terbukti \textit{Turing-complete}.
 
+Tugas ini meminta perancangan sebuah \textit{block cipher} baru beserta implementasi, simulasi pada berbagai mode operasi, dan analisis keamanannya. Kelompok kami merancang \textbf{\algname}, yaitu \textit{block cipher} 256-bit yang memadukan GoL dengan komponen \textit{block cipher} klasik di dalam jaringan Feistel. Laporan ini menjelaskan rancangan tersebut, hasil pengujiannya, serta kelebihan dan kelemahan yang kami temukan.
 
-\section{Identifikasi Masalah}
-Berdasarkan latar belakang tersebut, permasalahan utama yang diidentifikasi dalam pengembangan sistem ini adalah:
+\section{Tinjauan Singkat Block Cipher Pembanding}
+
+\subsection{Data Encryption Standard (DES)}
+DES distandardisasi oleh NIST pada tahun 1977 \cite{fips46}. DES memproses blok 64 bit dengan kunci efektif 56 bit melalui 16 ronde jaringan Feistel. Fungsi ronde DES terdiri atas ekspansi 32 bit menjadi 48 bit, XOR dengan \textit{round key}, delapan Kotak-S berukuran $6 \times 4$ bit, dan permutasi P. Struktur Feistel membuat proses dekripsi cukup dilakukan dengan menjalankan algoritma yang sama dengan urutan \textit{round key} terbalik. Kelemahan utama DES adalah ruang kuncinya yang kecil ($2^{56}$), sehingga kunci DES sudah dapat ditemukan dengan pencarian menyeluruh menggunakan perangkat keras khusus pada akhir 1990-an. DES juga rentan secara teoretis terhadap kriptanalisis diferensial \cite{biham1991} dan linear \cite{matsui1994}.
+
+\subsection{Advanced Encryption Standard (AES)}
+AES (Rijndael) \cite{fips197, daemen2002} menggantikan DES sejak 2001. AES memproses blok 128 bit dengan kunci 128, 192, atau 256 bit dalam 10, 12, atau 14 ronde. Berbeda dengan DES, AES menggunakan struktur \textit{Substitution--Permutation Network} (SPN). Setiap ronde terdiri atas \code{SubBytes} (Kotak-S $8 \times 8$ bit berbasis invers di GF($2^8$)), \code{ShiftRows}, \code{MixColumns} (perkalian matriks MDS di GF($2^8$)), dan \code{AddRoundKey}. Desain AES berlandaskan \textit{wide trail strategy} yang menjamin batas bawah jumlah Kotak-S aktif, sehingga peluang karakteristik diferensial dan linear dapat dibuktikan cukup kecil.
+
+\subsection{RC6}
+RC6 \cite{rivest1998} adalah finalis kompetisi AES yang memproses blok 128 bit dalam 20 ronde. Ciri khas RC6 (dan pendahulunya, RC5) adalah \textit{data-dependent rotation}: besar rotasi bit ditentukan oleh nilai data itu sendiri. RC6 juga memadukan operasi dari struktur aljabar yang berbeda, yaitu XOR, penjumlahan modulo $2^w$, dan perkalian bilangan bulat, sehingga sulit dianalisis dengan satu kerangka aljabar saja.
+
+\subsection{Perbandingan}
+\Cref{tab:perbandingan} merangkum perbandingan ketiga \textit{block cipher} di atas dengan rancangan \algname.
+
+\begin{table}[H]
+    \centering
+    \caption{Perbandingan \algname{} dengan \textit{block cipher} sejenis}
+    \label{tab:perbandingan}
+    \small
+    \begin{tabularx}{\textwidth}{l Y Y Y Y}
+        \toprule
+        \textbf{Aspek} & \textbf{DES} & \textbf{AES} & \textbf{RC6} & \textbf{\algname} \\
+        \midrule
+        Ukuran blok & 64 bit & 128 bit & 128 bit & 256 bit \\
+        Panjang kunci & 56 bit & 128/192/256 bit & 128/192/256 bit & $\geq$ 256 bit (di-\textit{hash} SHA-256 menjadi 256 bit) \\
+        Struktur & Feistel & SPN & Feistel tergeneralisasi & Feistel dengan dua jenis fungsi ronde \\
+        Jumlah ronde & 16 & 10/12/14 & 20 & 18 (2 GoL + 16 SPN) \\
+        Komponen nonlinear & 8 Kotak-S $6\times4$ & Kotak-S $8\times8$ & Rotasi bergantung data, perkalian & GoL, Kotak-S $8\times8$, penjumlahan mod 256, rotasi bergantung data \\
+        Penjadwalan kunci & Permutasi dan rotasi & Ekspansi dengan Kotak-S & Ekspansi dengan konstanta & SHA-256 dan evolusi GoL dengan injeksi ulang \textit{nonce} dan \textit{whitening} \\
+        \textit{Round key} per pesan & Tetap & Tetap & Tetap & Berbeda (bergantung \textit{nonce}) \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+\section{Gagasan Utama Rancangan}
+Rancangan \algname{} berangkat dari pertanyaan: \textit{bagaimana memanfaatkan sifat kompleks Game of Life tanpa bergantung sepenuhnya pada GoL sebagai satu-satunya sumber keamanan?} Evolusi GoL tidak dapat dibalik (banyak konfigurasi berbeda dapat berevolusi ke konfigurasi yang sama). Sifat ini mustahil diterapkan pada SPN murni, tetapi justru tidak menjadi masalah di dalam jaringan Feistel, karena fungsi ronde Feistel tidak perlu memiliki invers. Berdasarkan pengamatan tersebut, kami menyusun lima gagasan utama.
+
 \begin{enumerate}
-    \item \textbf{Skalabilitas Sistem:} Bagaimana menangani lonjakan beban laporan yang mendadak dari jutaan pengguna tanpa menurunkan performa aplikasi secara keseluruhan.
-    \item \textbf{Isolasi Data dan Keamanan:} Bagaimana memastikan laporan hanya dapat diakses oleh instansi yang berwenang (misal: Dinas Kebersihan tidak dapat melihat laporan kriminalitas) serta menjamin anonimitas bagi \textit{whistleblower}.
-    \item \textbf{Reliabilitas dan Ketersediaan:} Bagaimana merancang sistem yang tetap berfungsi meskipun salah satu komponen atau layanan mengalami kegagalan.
-    \item \textbf{Eskalasi dan Pemantauan:} Bagaimana mengotomatisasi proses eskalasi laporan yang tidak tertangani serta memungkinkan otoritas tertinggi memantau kinerja jajaran di bawahnya secara \textit{real-time}.
+    \item \textbf{Jaringan Feistel hibrida.} Blok 256 bit dibagi menjadi dua paruh 128 bit dan diproses dalam 18 ronde Feistel. Ronde pertama dan terakhir memakai fungsi ronde berbasis GoL ($f_{\text{GoL}}$), sedangkan ronde 2 sampai 17 memakai fungsi ronde SPN bergaya AES ($f_{\text{SPN}}$).
+    \item \textbf{GoL di dalam fungsi ronde.} $f_{\text{GoL}}$ menyusun paruh blok sebagai grid $8 \times 16$ bit, lalu mengevolusikannya beberapa generasi pada grid toroidal. Untuk mengurangi tabrakan akibat sifat GoL yang tidak injektif, hasil evolusi di-XOR kembali dengan masukan.
+    \item \textbf{Inti SPN yang teruji.} $f_{\text{SPN}}$ memakai Kotak-S, \code{ShiftRows}, dan \code{MixColumns} AES yang sifat diferensial dan linearnya sudah terbukti baik, lalu ditambah penjumlahan modulo 256 dengan kunci dan rotasi 128 bit yang besarnya bergantung pada data (terinspirasi RC6).
+    \item \textbf{Penjadwalan kunci berbasis GoL.} Kunci di-\textit{hash} dengan SHA-256, dicampur dengan \textit{nonce}, diisikan secara spiral ke grid $16 \times 16$, lalu dievolusikan dengan GoL. Pada setiap ronde, pola baru dari kunci dan \textit{nonce} yang digeser diinjeksikan ulang ke grid sebelum evolusi, dan pola yang sama dipakai kembali untuk \textit{whitening} hasil evolusi sebelum dilipat menjadi \textit{round key}. Dengan demikian, 18 \textit{round key} saling berbeda dan bit-bitnya seimbang.
+    \item \textbf{Round key unik per pesan.} \textit{Nonce} acak 32 byte dibangkitkan setiap kali enkripsi dan ikut menentukan \textit{round key}. Akibatnya, \textit{plaintext} dan kunci yang sama menghasilkan \textit{ciphertext} yang berbeda pada setiap enkripsi, bahkan pada mode ECB.
 \end{enumerate}
 
-\section{Tujuan Tugas Besar}
-Tujuan dari perancangan dan implementasi \textit{Proof-of-Concept} (PoC) pada tugas besar ini adalah:
+\section{Tujuan}
+Tujuan pengerjaan tugas ini adalah:
 \begin{enumerate}
-    \item Merancang arsitektur aplikasi terdistribusi yang mampu memenuhi aspek keamanan, keandalan, dan skalabilitas.
-    \item Mengimplementasikan sistem pelaporan yang mendukung berbagai tingkat privasi (publik, privat, anonim).
-    \item Menerapkan mekanisme \textit{observability} untuk memantau trafik dan performa antar komponen sistem.
-    \item Membuktikan efektivitas arsitektur terdistribusi dalam menangani fungsionalitas kritis seperti eskalasi otomatis dan isolasi data.
+    \item merancang \textit{block cipher} baru yang memenuhi prinsip \textit{confusion} dan \textit{diffusion};
+    \item mengimplementasikan algoritma tersebut beserta lima mode operasi (ECB, CBC, CFB, OFB, CTR) dan mekanisme \textit{padding};
+    \item menguji kebenaran enkripsi dan dekripsi pada berkas teks dan biner; serta
+    \item menganalisis keamanan rancangan melalui uji \textit{avalanche effect}, entropi, histogram, dan pengujian tambahan.
 \end{enumerate}
+
+\section{Sistematika Laporan}
+\Cref{ch:dasar-teori} membahas dasar teori yang mendasari rancangan. \Cref{ch:perancangan} menjelaskan rancangan \algname{} secara rinci. \Cref{ch:implementasi} memaparkan implementasi dan hasil simulasi pada seluruh mode operasi. \Cref{ch:analisis} menganalisis keamanan rancangan. \Cref{ch:kesimpulan} berisi kesimpulan dan saran pengembangan.

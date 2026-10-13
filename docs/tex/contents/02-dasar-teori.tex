@@ -1,0 +1,53 @@
+\chapter{Dasar Teori}
+\label{ch:dasar-teori}
+
+\section{Block Cipher, Confusion, dan Diffusion}
+\textit{Block cipher} adalah pasangan fungsi $E_K : \{0,1\}^n \to \{0,1\}^n$ dan $D_K = E_K^{-1}$ yang memetakan blok \textit{plaintext} berukuran $n$ bit ke blok \textit{ciphertext} berukuran sama di bawah kunci $K$ \cite{munir2026}. Shannon \cite{shannon1949} merumuskan dua prinsip perancangan:
+\begin{itemize}
+    \item \textbf{\textit{Confusion}}: hubungan statistik antara kunci dan \textit{ciphertext} dibuat serumit mungkin, umumnya dengan substitusi nonlinear (Kotak-S).
+    \item \textbf{\textit{Diffusion}}: pengaruh setiap bit \textit{plaintext} dan kunci disebar ke banyak bit \textit{ciphertext}, umumnya dengan permutasi dan transformasi linear.
+\end{itemize}
+Keduanya diwujudkan dengan mengulang fungsi ronde sederhana sebanyak beberapa kali (\textit{product cipher}).
+
+\section{Jaringan Feistel}
+Jaringan Feistel \cite{feistel1973} membagi blok menjadi paruh kiri $L$ dan kanan $R$. Pada ronde ke-$i$ dengan \textit{round key} $K_i$:
+\begin{equation}
+    L_i = R_{i-1}, \qquad R_i = L_{i-1} \oplus F(R_{i-1}, K_i).
+    \label{eq:feistel}
+\end{equation}
+Dekripsi menggunakan struktur yang sama dengan urutan \textit{round key} terbalik, karena $L_{i-1} = R_i \oplus F(L_i, K_i)$. Sifat terpenting struktur ini adalah \textbf{fungsi $F$ tidak perlu memiliki invers}. Fungsi apa pun, termasuk yang tidak injektif, tetap menghasilkan permutasi yang dapat dibalik. DES adalah contoh klasik \textit{cipher} Feistel \cite{fips46}.
+
+\section{Substitution--Permutation Network dan Komponen AES}
+SPN menerapkan substitusi dan permutasi secara langsung pada seluruh \textit{state}, sehingga setiap lapisan harus dapat dibalik. AES \cite{fips197, daemen2002} memakai empat transformasi pada \textit{state} $4 \times 4$ byte:
+\begin{itemize}
+    \item \code{SubBytes}: setiap byte $x$ diganti dengan $S(x) = A \cdot x^{-1} \oplus \texttt{0x63}$, dengan $x^{-1}$ invers perkalian di GF($2^8$) modulo $m(x) = x^8 + x^4 + x^3 + x + 1$ dan $A$ matriks afin. Kotak-S ini memiliki keseragaman diferensial 4 (peluang diferensial maksimum $2^{-6}$) dan bias linear maksimum $2^{-4}$.
+    \item \code{ShiftRows}: baris ke-$i$ dirotasi ke kiri sejauh $i$ byte.
+    \item \code{MixColumns}: setiap kolom dikalikan dengan matriks MDS $\left[\begin{smallmatrix}2&3&1&1\\1&2&3&1\\1&1&2&3\\3&1&1&2\end{smallmatrix}\right]$ di GF($2^8$), dengan \textit{branch number} 5.
+    \item \code{AddRoundKey}: XOR \textit{state} dengan \textit{round key}.
+\end{itemize}
+
+\section{Cellular Automaton dan Conway's Game of Life}
+\textit{Cellular automaton} (CA) adalah sistem dinamis diskret berupa kisi sel yang masing-masing memiliki keadaan berhingga. Semua sel diperbarui serentak menurut aturan lokal yang bergantung pada sel itu sendiri dan tetangganya. Game of Life (GoL) \cite{gardner1970} adalah CA dua dimensi biner dengan ketetanggaan Moore (8 tetangga) dan aturan B3/S23:
+\begin{equation}
+    s_{t+1} =
+    \begin{cases}
+        1 & \text{jika } N_t = 3, \text{ atau } s_t = 1 \text{ dan } N_t = 2,\\
+        0 & \text{selainnya},
+    \end{cases}
+    \label{eq:gol}
+\end{equation}
+dengan $s_t$ keadaan sel dan $N_t$ jumlah tetangga yang hidup pada generasi $t$. Pada grid berhingga, batas toroidal (sisi kiri bersambung dengan sisi kanan, sisi atas dengan sisi bawah) membuat setiap sel memiliki tepat delapan tetangga. GoL bersifat \textbf{tidak dapat dibalik}: banyak konfigurasi tidak memiliki pendahulu (\textit{Garden of Eden}) dan banyak konfigurasi berbeda berevolusi ke keadaan yang sama.
+
+\section{Related Works: Cellular Automaton dalam Kriptografi}
+Wolfram \cite{wolfram1986} mengusulkan CA satu dimensi aturan 30 sebagai pembangkit bilangan acak semu untuk \textit{stream cipher}, dengan alasan bahwa evolusinya tampak acak walaupun aturannya sederhana. Nandi dkk.\ \cite{nandi1994} kemudian mengusulkan \textit{block cipher} dan \textit{stream cipher} berbasis CA yang dapat diprogram. Secara umum, penelitian kriptografi berbasis CA memanfaatkan dua sifat: paralelisme (semua sel dapat dihitung serentak) dan perilaku kompleks yang muncul dari aturan sederhana. Kelemahan yang sering dilaporkan adalah struktur linear pada aturan tertentu dan kecenderungan konfigurasi menuju keadaan stabil. Kedua kelemahan ini menjadi pertimbangan dalam rancangan kami. GoL dipilih karena aturannya nonlinear, dan GoL tidak dijadikan satu-satunya sumber nonlinearitas.
+
+\section{Mode Operasi dan Padding}
+Mode operasi menentukan cara \textit{block cipher} dipakai untuk pesan yang lebih panjang dari satu blok \cite{sp80038a}. Pada ECB, setiap blok dienkripsi secara independen. CBC meng-XOR setiap blok \textit{plaintext} dengan blok \textit{ciphertext} sebelumnya. CFB, OFB, dan CTR mengubah \textit{block cipher} menjadi \textit{stream cipher} dengan cara mengenkripsi umpan balik atau \textit{counter}, lalu meng-XOR hasilnya dengan \textit{plaintext}. Mode ECB dan CBC membutuhkan \textit{padding} agar panjang pesan menjadi kelipatan ukuran blok. Skema PKCS\#7 \cite{rfc5652} menambahkan $p$ byte bernilai $p$, dengan $1 \le p \le b$ untuk ukuran blok $b$ byte.
+
+\section{Metrik Pengujian Keamanan}
+\begin{itemize}
+    \item \textbf{\textit{Avalanche effect}}: perubahan satu bit masukan (\textit{plaintext} atau kunci) idealnya mengubah sekitar 50\% bit keluaran. Kriteria yang lebih ketat, \textit{Strict Avalanche Criterion} (SAC) \cite{webster1986}, mensyaratkan setiap bit keluaran berubah dengan peluang tepat $\frac12$.
+    \item \textbf{Entropi Shannon} \cite{shannon1948}: $H = -\sum_{i=0}^{255} p_i \log_2 p_i$ bit per byte, dengan $p_i$ frekuensi relatif nilai byte $i$. Nilai maksimum 8 dicapai saat seluruh nilai byte muncul dengan peluang sama.
+    \item \textbf{Histogram dan uji $\chi^2$}: histogram \textit{ciphertext} yang baik tampak rata. Kerataannya dapat diuji dengan $\chi^2 = \sum_i (O_i - E_i)^2 / E_i$ dengan $E_i = N/256$. Pada 255 derajat kebebasan dan taraf nyata 5\%, nilai kritisnya adalah 293,25.
+    \item \textbf{Keseragaman diferensial dan linear} Kotak-S \cite{biham1991, matsui1994, heys2002}: nilai maksimum pada \textit{Difference Distribution Table} (DDT) dan \textit{Linear Approximation Table} (LAT). Semakin kecil nilainya, semakin tahan Kotak-S terhadap kriptanalisis diferensial dan linear.
+\end{itemize}

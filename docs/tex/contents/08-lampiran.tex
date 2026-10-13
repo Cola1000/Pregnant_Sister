@@ -1,0 +1,64 @@
+\chapter{Tautan Repositori dan Dokumentasi}
+\label{app:tautan}
+\begin{itemize}
+    \item Repositori kode sumber: \url{https://github.com/Cola1000/Pregnant_Sister}
+    \item Dokumentasi API: \url{https://cola1000.github.io/Pregnant_Sister/}
+\end{itemize}
+
+\chapter{Keluaran Pengujian Keamanan}
+\label{app:security}
+Keluaran lengkap \code{python -m test.test\_security} (benih acak 69420) untuk versi akhir \algname{}. Semua pemeriksaan berlabel \code{[OK]}. Baris \textit{S-box is affine} bernilai \code{False} karena Kotak-S versi akhir bukan lagi Kotak-S afin, dan baris \textit{Keys X||X} menunjukkan bahwa kunci ekuivalen akibat pelipatan sudah tidak ada (\cref{ch:analisis}).
+
+\begin{lstlisting}[numbers=none, basicstyle=\ttfamily\scriptsize, caption={Keluaran \code{test\_security}}]
+[OK] Round-trip in all modes and lengths: 0 failures
+[OK] Plaintext avalanche (block level): 49.95% (min 98, max 162 of 256 bits)
+[OK] Key avalanche (block level): 50.46% (min 115 bits)
+       full diffusion check, 2 rounds: 23.6%
+       full diffusion check, 3 rounds: 45.0%
+       full diffusion check, 4 rounds: 50.1%
+[OK] Raw ciphertext of 64 KB zeros: entropy 7.9973/8, chi2 239.6 (df=255, pass < 293)
+       note: base64 output can never exceed 6.0 bits entropy, so measure on raw bytes
+       throughput: 68.3 KB/s
+[OK] S-box is affine (167x + 91 mod 256): False
+[OK] S-box max differential count: 4/256 (AES: 4/256)
+[OK] S-box max linear bias: 16/256 (AES: 16/256)
+[OK] f_spn: P[0x80..80 -> 0x80..80] = 0/4000 (<= 2^-11.97)
+       GoL + 1 SPN + GoL: predicted 2^-3, observed 0 (0/2000)
+       GoL + 4 SPN + GoL: predicted 2^-9, observed 0 (0/20000)
+[OK] Full 18-round cipher: 11 active SPN rounds -> distinguisher with probability <= 2^-132 (need < 2^-128)
+[OK] Round-key bit density: 0.4985 (ideal 0.5)
+[OK] Round-key byte entropy: 7.9934/8 (random bytes, same sample size: ~7.99)
+[OK] Keys X||X and 'A'*64 are not interchangeable
+\end{lstlisting}
+
+\chapter{Hash SHA-256 Berkas Uji}
+\label{app:hash}
+\textit{Hash} berikut sama untuk berkas asli dan untuk hasil dekripsi pada kelima mode operasi.
+
+\begin{table}[H]
+    \centering
+    \caption{\textit{Hash} SHA-256 berkas uji}
+    \label{tab:hash}
+    \footnotesize
+    \begin{tabular}{l l}
+        \toprule
+        \textbf{Berkas} & \textbf{SHA-256} \\
+        \midrule
+        \code{glasses.txt} & \code{76d3bcab876abc4122b152305d979e769c2aef78c9d0232b07a63de79544e342} \\
+        \code{image.jpg}   & \code{5a92b5ae1f92711d77169315198b91b25ea103ee9db38d7e16e4bc8c42b26fee} \\
+        \code{video.mp4}   & \code{f8564e7de424642ca2743b781833b3b6ea76da1e7546ca4654186e857cb95436} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\chapter{Kode Sumber Inti}
+\label{app:kode}
+
+\lstinputlisting[language=Python, caption={\code{src/feistel.py}}]{\srcdir/feistel.py}
+\lstinputlisting[language=Python, caption={\code{src/spn.py}}]{\srcdir/spn.py}
+\lstinputlisting[language=Python, caption={\code{src/keygen.py}}]{\srcdir/keygen.py}
+\lstinputlisting[language=Python, caption={\code{src/automaton.py}}]{\srcdir/automaton.py}
+\lstinputlisting[language=Python, caption={\code{src/modes.py}}]{\srcdir/modes.py}
+\lstinputlisting[language=Python, caption={\code{src/padding.py}}]{\srcdir/padding.py}
+\lstinputlisting[language=Python, caption={\code{src/encrypt.py}}]{\srcdir/encrypt.py}
+\lstinputlisting[language=Python, caption={\code{src/decrypt.py}}]{\srcdir/decrypt.py}

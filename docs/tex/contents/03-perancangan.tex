@@ -1,506 +1,490 @@
-\chapter{Perancangan Sistem}
+\chapter{Perancangan Block Cipher}
+\label{ch:perancangan}
 
-\section{Deskripsi Umum Sistem}
-Sistem \textit{JagaWarga} dirancang dengan pendekatan arsitektur \textit{microservices} untuk menangani kompleksitas pelaporan warga pada kota berpenduduk 2,5 juta jiwa. Berbeda dengan pendekatan monolitik, sistem ini memecah fungsionalitas utama menjadi layanan-layanan kecil yang independen dan saling berkomunikasi melalui protokol jaringan. Hal ini dilakukan untuk menjamin bahwa lonjakan beban pada satu fitur (misalnya lonjakan pelaporan saat banjir) tidak melumpuhkan fungsi lain seperti analisis data oleh pihak berwenang.
+\section{Spesifikasi Umum}
+\algname{} adalah \textit{block cipher} kunci simetris dengan spesifikasi seperti pada \cref{tab:spesifikasi}. Notasi yang dipakai di seluruh bab ini dirangkum pada \cref{tab:notasi}.
 
+\begin{table}[H]
+    \centering
+    \caption{Spesifikasi \algname}
+    \label{tab:spesifikasi}
+    \begin{tabularx}{0.9\textwidth}{l Y}
+        \toprule
+        \textbf{Parameter} & \textbf{Nilai} \\
+        \midrule
+        Ukuran blok & 256 bit (32 byte), dibagi menjadi dua paruh 128 bit \\
+        Panjang kunci & minimal 256 bit (32 byte); kunci di-\textit{hash} dengan SHA-256 menjadi 256 bit \\
+        \textit{Nonce} & 256 bit (32 byte) acak dari CSPRNG, dibangkitkan setiap enkripsi \\
+        Struktur & Jaringan Feistel 18 ronde \\
+        Fungsi ronde & $f_{\text{GoL}}$ pada ronde 1 dan 18, $f_{\text{SPN}}$ pada ronde 2--17 \\
+        \textit{Round key} & 18 buah, masing-masing 128 bit \\
+        Penjadwalan kunci & SHA-256, lalu Game of Life $16 \times 16$ toroidal, 4 generasi per ronde, dengan injeksi ulang \textit{nonce} dan \textit{whitening} \\
+        Mode operasi & ECB, CBC (bawaan), CFB, OFB, CTR \\
+        \textit{Padding} & PKCS\#7 dengan ukuran blok 32 byte \\
+        Keluaran & Base64$(\text{\textit{nonce}} \,\Vert\, C)$ \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
 
+\begin{table}[H]
+    \centering
+    \caption{Notasi}
+    \label{tab:notasi}
+    \begin{tabularx}{0.9\textwidth}{l Y}
+        \toprule
+        \textbf{Notasi} & \textbf{Arti} \\
+        \midrule
+        $\oplus$ & XOR bit demi bit \\
+        $\boxplus$ & penjumlahan per byte modulo 256 \\
+        $x \rotl n$ & rotasi kiri $x$ sejauh $n$ bit \\
+        $a \,\Vert\, b$ & penyambungan (konkatenasi) $a$ dan $b$ \\
+        $L_i, R_i$ & paruh kiri dan kanan (masing-masing 128 bit) setelah ronde ke-$i$ \\
+        $K_i$ & \textit{round key} ke-$i$ (128 bit), $1 \le i \le 18$ \\
+        $N$ & \textit{nonce} 32 byte \\
+        $\mathrm{GoL}^g(G)$ & hasil evolusi grid $G$ sebanyak $g$ generasi Game of Life \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
 
-Secara garis besar, sistem terdiri dari beberapa komponen utama yang bekerja secara terintegrasi:
+\section{Alur Global Enkripsi dan Dekripsi}
+\Cref{fig:alur-global} memperlihatkan alur lengkap enkripsi sebuah pesan. Langkah-langkahnya adalah sebagai berikut.
 \begin{enumerate}
-    \item \textbf{Edge Layer (Gateway):} Bertindak sebagai pintu masuk tunggal bagi seluruh permintaan dari aplikasi warga dan portal dinas. Di lapisan ini dilakukan \textit{rate limiting} dan \textit{load balancing} untuk menjaga stabilitas sistem dari beban mendadak.
-    \item \textbf{Core Services:} Terdiri dari kumpulan layanan yang menangani logika bisnis inti. 
-    \begin{itemize}
-        \item \textit{Identity Service} mengelola validasi pengguna.
-        \item \textit{Report Service} mengelola siklus hidup laporan.
-        \item \textit{Anonymizer Proxy} memastikan data pelapor anonim dibersihkan sebelum disimpan di basis data laporan.
-    \end{itemize}
-    \item \textbf{Asynchronous Processing:} Menggunakan \textit{Message Broker} sebagai jembatan komunikasi antar-layanan yang tidak bersifat \textit{blocking}. Misalnya, ketika laporan dibuat, \textit{Notification Service} akan mengirimkan notifikasi tanpa menunggu proses penyimpanan data selesai sepenuhnya.
-    \item \textbf{Escalation \& Monitoring Engine:} Sebuah \textit{worker background} yang secara aktif memantau \textit{SLA (Service Level Agreement)} setiap laporan. Jika suatu instansi tidak merespon dalam waktu yang ditentukan, sistem secara otomatis akan melakukan \textit{event} eskalasi ke jenjang otoritas di atasnya.
+    \item Kunci divalidasi (minimal 32 byte) dan data dikonversi menjadi \textit{bytes}.
+    \item Data diberi \textit{padding} PKCS\#7 hingga panjangnya kelipatan 32 byte (\cref{sec:padding}).
+    \item \textit{Nonce} 32 byte dibangkitkan secara acak.
+    \item Penjadwalan kunci menurunkan 18 \textit{round key} dari kunci dan \textit{nonce} (\cref{sec:keysched}).
+    \item Data dipotong menjadi blok 32 byte, lalu dienkripsi sesuai mode operasi (\cref{sec:mode}). Setiap pemanggilan $E$ menjalankan 18 ronde Feistel (\cref{sec:feistel}).
+    \item \textit{Nonce} disambungkan di depan \textit{ciphertext}, lalu hasilnya dikodekan dengan Base64.
 \end{enumerate}
-
-
-
-Alur kerja sistem dimulai ketika warga mengirimkan laporan melalui aplikasi. Laporan tersebut divalidasi identitasnya, lalu diarahkan ke layanan penyimpanan yang sesuai. Jika laporan bersifat anonim, sistem akan menjalankan prosedur \textit{stripping} pada \textit{Personally Identifiable Information} (PII). Laporan yang telah tersimpan kemudian didistribusikan ke dinas terkait melalui sistem antrean pesan, memastikan bahwa setiap instansi hanya menerima informasi yang berada di bawah wewenang hukumnya.
-
-\section{Arsitektur Sistem}
-Perancangan arsitektur \textit{JagaWarga} mengadopsi pola \textit{Microservices} yang terdesentralisasi. Setiap komponen dirancang untuk memiliki tanggung jawab tunggal (\textit{Single Responsibility Principle}) dan memiliki basis data sendiri (\textit{Database-per-service}) untuk menjamin isolasi data sesuai kebutuhan \textbf{NFR-S1}.
-
-\subsection{Diagram Arsitektur Logis}
-Diagram berikut menunjukkan pembagian fungsionalitas sistem ke dalam beberapa layanan mandiri:
+Dekripsi menjalankan langkah sebaliknya: Base64 didekode, 32 byte pertama dibaca sebagai \textit{nonce}, \textit{round key} diturunkan ulang, setiap blok didekripsi sesuai mode, lalu \textit{padding} dibuang dan divalidasi.
 
 \begin{figure}[H]
     \centering
-    \begin{tikzpicture}[
-        node distance=1.5cm and 2cm,
-        box/.style={rectangle, draw, fill=blue!5, text width=2.5cm, align=center, minimum height=1cm, rounded corners, font=\small},
-        db/.style={cylinder, draw, shape border rotate=90, fill=orange!10, text width=1.2cm, align=center, minimum height=1.5cm, font=\scriptsize},
-        broker/.style={rectangle, draw, fill=green!10, text width=6cm, align=center, minimum height=0.8cm, dashed, font=\small\bfseries},
-        arrow/.style={-Stealth, thick}
-    ]
+    \begin{tikzpicture}[font=\small]
+        \node[data] (pt) at (0,0) {\textit{Plaintext}\\(teks/biner)};
+        \node[blok] (pad) at (2.55,0) {\textit{Padding}\\PKCS\#7};
+        \node[blok] (split) at (4.75,0) {Potong blok\\32 byte};
+        \node[blok, minimum width=3.6cm] (mode) at (8.3,0) {Mode operasi\\ECB/CBC/CFB/OFB/CTR};
+        \node[blok] (b64) at (11.9,0) {Base64\\$(N \Vert C)$};
 
-    % Aktor
-    \node (user) [box, fill=gray!10] {Warga / Dinas / Walikota};
-    
-    % Gateway
-    \node (gateway) [box, below=of user, fill=blue!20] {\textbf{API Gateway}\\ \scriptsize (Rate Limit, Auth)};
+        \node[data] (key) at (0,-2) {Kunci $K$\\($\geq$ 32 byte)};
+        \node[blokkunci] (ks) at (2.9,-2) {Penjadwalan\\kunci (GoL)};
+        \node[blok, fill=red!8] (feistel) at (7.7,-2) {$E$: Feistel 18 ronde\\(\cref{fig:feistel})};
+        \node[data] (nonce) at (2.9,-3.7) {\textit{Nonce} $N$ (32 byte acak)};
 
-    % Services
-    \node (auth) [box, below left=of gateway] {Identity Service};
-    \node (anonymizer) [box, below=of gateway] {Anonymizer Service};
-    \node (report) [box, below right=of gateway] {Report Service};
-    
-    % Databases
-    \node (db_auth) [db, below=of auth] {DB Auth};
-    \node (db_report) [db, below=of report] {DB Report};
-
-    % Message Broker
-    \node (nats) [broker, below=2.5cm of anonymizer] {Message Broker (NATS / RabbitMQ)};
-
-    % Worker Services
-    \node (notif) [box, below left=1cm of nats] {Notification Service};
-    \node (escalation) [box, below right=1cm of nats] {Escalation Service};
-
-    % Garis Hubung
-    \draw [arrow] (user) -- (gateway);
-    \draw [arrow] (gateway) -- (auth);
-    \draw [arrow] (gateway) -- (anonymizer);
-    \draw [arrow] (gateway) -- (report);
-    
-    \draw [arrow, dashed] (auth) -- (db_auth);
-    \draw [arrow, dashed] (report) -- (db_report);
-    
-    \draw [arrow] (report) -- (nats) node[midway, right, font=\tiny] {Event: Created};
-    \draw [arrow] (anonymizer) -- (report) node[midway, left, font=\tiny] {Clean Data};
-    
-    \draw [arrow] (nats) -- (notif);
-    \draw [arrow] (nats) -- (escalation);
-
+        \draw[panah] (pt) -- (pad);
+        \draw[panah] (pad) -- (split);
+        \draw[panah] (split) -- (mode);
+        \draw[panah] (mode) -- (b64);
+        \draw[panah] (key) -- (ks);
+        \draw[panah] (nonce) -- (ks);
+        \draw[panah] (ks) -- node[above, font=\scriptsize] {$K_1, \dots, K_{18}$} (feistel);
+        \draw[panah, <->] (feistel.north) -- node[right, font=\scriptsize] {per blok} (feistel.north |- mode.south);
+        \draw[panah] (nonce.east) -- (11.9,-3.7) -- node[pos=0.5, right, font=\scriptsize, align=left] {disisipkan\\di depan $C$} (b64.south);
+        \fill (9.7,-3.7) circle (1.5pt);
+        \draw[panah] (9.7,-3.7) -- node[pos=0.45, right, font=\scriptsize, align=left] {IV /\\\textit{counter}\\awal} ($(mode.south)+(1.4,0)$);
     \end{tikzpicture}
-    \caption{Diagram Arsitektur Logis JagaWarga}
-    \label{fig:arch_logic}
+    \caption{Alur global enkripsi \algname}
+    \label{fig:alur-global}
 \end{figure}
 
-\begin{enumerate}
-    \item \textbf{API Gateway:} Bertindak sebagai titik masuk tunggal. Bertanggung jawab atas \textit{routing}, \textit{authentication check}, dan \textit{rate limiting}.
-    \item \textbf{Identity Service:} Menangani pendaftaran dan validasi identitas warga untuk memastikan data pelapor asli (\textbf{NFR-S3}), namun tetap memisahkan kredensial dari data laporan.
-    \item \textbf{Report Service:} Mengelola penyimpanan dan pengambilan data laporan (teks, lokasi, multimedia).
-    \item \textbf{Anonymization Service:} Komponen krusial yang bertugas memotong relasi antara identitas pengguna dengan laporan jika kategori laporan dipilih sebagai "Anonim" (\textbf{NFR-S4}).
-    \item \textbf{Notification Service:} Mengirimkan pembaruan status laporan kepada warga secara \textit{asynchronous}.
-    \item \textbf{Escalation Service:} Layanan berbasis \textit{worker} yang memantau batas waktu penyelesaian laporan dan memicu perpindahan wewenang jika terjadi keterlambatan.
-\end{enumerate}
+\section{Jaringan Feistel 18 Ronde}
+\label{sec:feistel}
+Fungsi enkripsi satu blok $E$ memecah blok 256 bit $P$ menjadi $L_0 \Vert R_0$ (masing-masing 128 bit), lalu menjalankan 18 ronde Feistel:
+\begin{equation}
+    L_i = R_{i-1}, \qquad R_i = L_{i-1} \oplus F_i(R_{i-1}, K_i), \qquad
+    F_i =
+    \begin{cases}
+        f_{\text{GoL}} & i \in \{1, 18\},\\
+        f_{\text{SPN}} & 2 \le i \le 17.
+    \end{cases}
+    \label{eq:feistel-ps}
+\end{equation}
+Keluaran blok adalah $C = R_{18} \Vert L_{18}$, yaitu dengan pertukaran paruh terakhir dibatalkan seperti pada DES. Struktur ini diperlihatkan pada \cref{fig:feistel}.
 
-\subsection{Pola Komunikasi Antar-Komponen}
-Sistem JagaWarga mengadopsi pendekatan \textit{hybrid communication} untuk menyeimbangkan antara kebutuhan \textit{user experience} yang responsif dan ketangguhan sistem secara keseluruhan.
-
-\subsubsection{Komunikasi Sinkron (Synchronous)}
-Komunikasi sinkron menggunakan protokol \textbf{REST} atau \textbf{gRPC} diterapkan pada alur kerja yang membutuhkan kepastian respon seketika (\textit{immediate consistency}).
+Pemilihan fungsi ronde mengikuti peran masing-masing:
 \begin{itemize}
-    \item \textbf{Penggunaan:} Interaksi antara \textit{Gateway} ke \textit{Identity Service} untuk autentikasi, serta pengambilan data laporan publik untuk tampilan utama aplikasi.
-    \item \textbf{Justifikasi (NFR-P1):} Protokol gRPC dipilih untuk komunikasi antar-layanan internal karena menggunakan \textit{Protocol Buffers} yang memiliki \textit{payload} lebih kecil dan latensi lebih rendah dibandingkan JSON tradisional, mendukung pencapaian target performa pada beban tinggi.
+    \item \textbf{Ronde 1 dan 18 ($f_{\text{GoL}}$)} berfungsi sebagai lapisan masuk dan keluar yang nonlinear dan berbeda sifat aljabarnya dari inti SPN. Penyerang yang ingin menganalisis inti SPN harus terlebih dahulu melewati transformasi GoL yang tidak memiliki deskripsi aljabar sederhana.
+    \item \textbf{Ronde 2--17 ($f_{\text{SPN}}$)} memberikan jaminan \textit{confusion} dan \textit{diffusion} yang terukur melalui Kotak-S dan \code{MixColumns} AES.
 \end{itemize}
-
-\subsubsection{Komunikasi Asinkron (Asynchronous)}
-Untuk proses yang bersifat intensif atau melibatkan banyak layanan turunan, digunakan pola \textit{Event-Driven} melalui \textbf{Message Broker}.
-\begin{itemize}
-    \item \textbf{Mekanisme:} Setelah \textit{Report Service} berhasil menyimpan data ke basis data, layanan tersebut akan mempublikasikan \textit{event} \texttt{ReportCreated} ke \textit{Message Broker}.
-    \item \textbf{Justifikasi (NFR-R1 \& NFR-SC1):} 
-    \begin{itemize}
-        \item \textbf{Decoupling:} \textit{Report Service} tidak perlu mengetahui keberadaan \textit{Notification Service} atau sistem eksternal lainnya. Ini memudahkan penambahan fitur baru di masa depan tanpa mengubah kode layanan inti.
-        \item \textbf{Resilience:} Jika terjadi lonjakan laporan warga secara mendadak, \textit{Message Broker} akan bertindak sebagai \textit{buffer}. Layanan pemroses (seperti \textit{Notification}) dapat mengambil pesan sesuai dengan kapasitas kemampuannya (\textit{backpressure handling}), sehingga sistem tidak tumbang akibat \textit{resource exhaustion}.
-    \end{itemize}
-\end{itemize}
-
-\subsubsection{Analisis Alur Interaksi Pelaporan Anonim}
 
 \begin{figure}[H]
     \centering
-    \begin{tikzpicture}[
-        scale=0.8, transform shape,
-        obj/.style={rectangle, draw, fill=gray!10, text width=2cm, align=center, minimum height=3cm},
-        arrow/.style={-Stealth, thick}
-    ]
+    \begin{tikzpicture}[x=1cm, y=1cm, font=\small]
+        \node[data, minimum width=7cm] (P) at (0,0) {Blok \textit{plaintext} $P$ (256 bit)};
+        \node[data, minimum width=2.6cm] (L0) at (-2,-1.1) {$L_0$ (128 bit)};
+        \node[data, minimum width=2.6cm] (R0) at (2,-1.1) {$R_0$ (128 bit)};
+        \draw[panah] (P.south -| L0) -- (L0);
+        \draw[panah] (P.south -| R0) -- (R0);
 
-    % Lifelines
-    \node (warga) [obj] {Warga};
-    \node (gw) [obj, right=1.5cm of warga] {Gateway};
-    \node (anon) [obj, right=1.5cm of gw, fill=red!5] {Anonymizer};
-    \node (rep) [obj, right=1.5cm of anon] {Report Service};
-    \node (nats) [obj, right=1.5cm of rep, fill=green!5] {Message Broker};
+        % ronde 1
+        \node[xorop] (x1) at (-2,-2.4) {};
+        \node[blokgol, minimum width=2cm] (f1) at (0,-2.4) {$f_{\text{GoL}}$};
+        \node (k1) at (0,-1.55) {$K_1$};
+        \draw[panah] (L0) -- (x1);
+        \draw[garis] (R0) -- (2,-2.4);
+        \draw[panah] (2,-2.4) -- (f1);
+        \draw[panah] (f1) -- (x1);
+        \draw[panah] (k1) -- (f1);
+        \draw[garis] (x1) -- (-2,-2.9) -- (2,-3.7);
+        \draw[garis] (2,-2.4) -- (2,-2.9) -- (-2,-3.7);
+        \node[left] at (-2,-3.9) {$L_1$};
+        \node[right] at (2,-3.9) {$R_1$};
 
-    % Alur
-    \draw [arrow] ([yshift=1cm]warga.east) -- ([yshift=1cm]gw.west) node[midway, above, font=\tiny] {1. Submit Report (Anon)};
-    \draw [arrow] ([yshift=0.5cm]gw.east) -- ([yshift=0.5cm]anon.west) node[midway, above, font=\tiny] {2. Scrub PII};
-    \draw [arrow] ([yshift=0cm]anon.east) -- ([yshift=0cm]rep.west) node[midway, above, font=\tiny] {3. Save Clean Data};
-    \draw [arrow] ([yshift=-0.5cm]rep.east) -- ([yshift=-0.5cm]nats.west) node[midway, above, font=\tiny] {4. Publish Event};
-    
-    % Return
-    \draw [arrow, dashed] ([yshift=-1cm]rep.west) -- ([yshift=-1cm]warga.east) node[midway, below, font=\tiny] {5. Success Response};
+        % ronde 2
+        \node[xorop] (x2) at (-2,-4.6) {};
+        \node[blokspn, minimum width=2cm] (f2) at (0,-4.6) {$f_{\text{SPN}}$};
+        \node (k2) at (0,-3.75) {$K_2$};
+        \draw[panah] (-2,-3.7) -- (x2);
+        \draw[garis] (2,-3.7) -- (2,-4.6);
+        \draw[panah] (2,-4.6) -- (f2);
+        \draw[panah] (f2) -- (x2);
+        \draw[panah] (k2) -- (f2);
+        \draw[garis] (x2) -- (-2,-5.1) -- (2,-5.9);
+        \draw[garis] (2,-4.6) -- (2,-5.1) -- (-2,-5.9);
+        \node[left] at (-2,-6.1) {$L_2$};
+        \node[right] at (2,-6.1) {$R_2$};
 
+        % ronde 3-17
+        \draw[garis, dashed] (-2,-5.9) -- (-2,-7.1);
+        \draw[garis, dashed] (2,-5.9) -- (2,-7.1);
+        \node[blokspn, minimum width=3cm, fill=orange!7, dashed] at (0,-6.5) {ronde 3--17: $f_{\text{SPN}}$};
+        \node[left] at (-2,-7.3) {$L_{17}$};
+        \node[right] at (2,-7.3) {$R_{17}$};
+
+        % ronde 18
+        \node[xorop] (x18) at (-2,-8.1) {};
+        \node[blokgol, minimum width=2cm] (f18) at (0,-8.1) {$f_{\text{GoL}}$};
+        \node (k18) at (0,-7.25) {$K_{18}$};
+        \draw[panah] (-2,-7.1) -- (x18);
+        \draw[garis] (2,-7.1) -- (2,-8.1);
+        \draw[panah] (2,-8.1) -- (f18);
+        \draw[panah] (f18) -- (x18);
+        \draw[panah] (k18) -- (f18);
+
+        \node[data, minimum width=2.6cm] (R18) at (-2,-9.3) {$R_{18}$};
+        \node[data, minimum width=2.6cm] (L18) at (2,-9.3) {$L_{18} = R_{17}$};
+        \draw[panah] (x18) -- (R18);
+        \draw[panah] (2,-8.1) -- (L18);
+        \node[data, minimum width=7cm] (C) at (0,-10.5) {Blok \textit{ciphertext} $C = R_{18} \Vert L_{18}$ (256 bit)};
+        \draw[panah] (R18) -- (R18 |- C.north);
+        \draw[panah] (L18) -- (L18 |- C.north);
+
+        \node[right, align=left, font=\scriptsize] at (3.8,-2.4) {\textcolor{green!45!black}{$\blacksquare$} ronde berbasis Game of Life};
+        \node[right, align=left, font=\scriptsize] at (3.8,-4.6) {\textcolor{orange!80!black}{$\blacksquare$} ronde SPN gaya AES};
+        \node[right, align=left, font=\scriptsize] at (3.8,-8.1) {ronde terakhir tanpa\\pertukaran paruh};
     \end{tikzpicture}
-    \caption{Diagram Interaksi Pelaporan Anonim (\textit{Whistleblowing})}
-    \label{fig:interaction_anon}
+    \caption{Struktur jaringan Feistel 18 ronde pada \algname}
+    \label{fig:feistel}
 \end{figure}
 
-Berdasarkan \textbf{Gambar \ref{fig:interaction_anon}}, sistem menerapkan prosedur keamanan berlapis untuk menjamin fitur \textit{whistleblowing}:
+\section{Fungsi Ronde \texorpdfstring{$f_{\text{GoL}}$}{f-GoL}}
+\label{sec:fgol}
+Fungsi ronde berbasis Game of Life didefinisikan sebagai
+\begin{equation}
+    f_{\text{GoL}}(R, K) = \mathrm{Ratakan}\big(\mathrm{GoL}^4(\mathrm{Grid}_{8\times16}(R \oplus K))\big) \oplus R.
+    \label{eq:fgol}
+\end{equation}
+Langkah-langkahnya (\cref{fig:fgol}) adalah:
 \begin{enumerate}
-    \item \textbf{Submit Report:} Permintaan masuk melalui \textit{Gateway} yang melakukan validasi token JWT pelapor.
-    \item \textbf{PII Scrubbing:} Sebelum data menyentuh \textit{persistence layer}, \textit{Anonymizer Service} melakukan transformasi data. Informasi identitas pelapor dipisahkan secara fisik dan hanya ID acak (\textit{pseudonym}) yang diteruskan. Prosedur ini krusial untuk memenuhi \textbf{NFR-S4}.
-    \item \textbf{Early Success Response:} Sistem memberikan respon sukses kepada warga segera setelah data tersimpan di \textit{Report Service} (Langkah 5), tanpa menunggu notifikasi terkirim. Hal ini meminimalisir \textit{perceived latency} bagi pengguna.
-    \item \textbf{Post-Processing:} Pengiriman notifikasi dan pemicu eskalasi dilakukan sepenuhnya di latar belakang melalui \textit{Message Broker}. Jika \textit{Notification Service} sedang dalam masa \textit{maintenance}, pesan tetap aman tersimpan di antrean (\textit{durability}) dan akan diproses segera setelah layanan kembali aktif.
+    \item \textbf{Pencampuran kunci.} $X = R \oplus K$ (128 bit).
+    \item \textbf{Penyusunan grid.} 128 bit $X$ disusun menjadi grid 8 baris $\times$ 16 kolom secara \textit{big-endian}: dua byte pertama menjadi baris teratas, dan bit paling signifikan menjadi kolom paling kiri.
+    \item \textbf{Evolusi.} Grid dievolusikan 4 generasi dengan aturan B3/S23 (\cref{eq:gol}) pada batas toroidal.
+    \item \textbf{Perataan dan XOR umpan maju.} Grid hasil evolusi diratakan kembali menjadi 128 bit, lalu di-XOR dengan $R$.
 \end{enumerate}
 
-\section{Pemilihan Teknologi}
-Dalam merancang sistem JagaWarga, dipilih pendekatan \textit{Polyglot Architecture} untuk memastikan setiap layanan menggunakan alat yang paling optimal sesuai dengan karakteristik bebannya. Berikut adalah rincian teknologi yang digunakan beserta justifikasinya terhadap kebutuhan fungsional (FR) dan non-fungsional (NFR):
-
-\subsection{Analisis Komponen 1: \textit{Backend Runtime} (Layanan Inti)}
-Layanan inti (\textit{core services}) bertanggung jawab atas manajemen laporan, logika eskalasi otomatis, dan integrasi antar-komponen. Mengingat beban target 2,5 juta penduduk, pemilihan \textit{runtime} menjadi krusial untuk menjamin \textit{throughput} tinggi dan \textit{fault tolerance}.
-
-\subsubsection{Alternatif Teknologi yang Memungkinkan}
-Dalam tahap perancangan, kami mengevaluasi tiga ekosistem yang memiliki rekam jejak kuat dalam arsitektur terdistribusi:
-\begin{enumerate}
-    \item \textbf{Node.js (V8 Engine):} Menggunakan model \textit{Event Loop single-threaded} yang sangat efisien untuk operasi I/O intensif namun memiliki batasan pada komputasi paralel murni.
-    \item \textbf{Go (Golang):} Bahasa pemrograman yang dikompilasi secara statis dengan fitur \textit{Goroutines}, sangat populer untuk \textit{cloud-native services} karena performa \textit{raw}-nya.
-    \item \textbf{Elixir (BEAM VM):} Bahasa fungsional yang berjalan di atas \textit{Erlang Virtual Machine}. Didesain sejak awal untuk sistem terdistribusi (\textit{distributed by nature}) dan \textit{soft real-time}.
-\end{enumerate}
-
-\subsubsection{\textit{Pros} dan \textit{Cons} Teknologi}
-Berikut adalah tabel perbandingan mendalam berdasarkan kriteria teknis yang relevan dengan aplikasi JagaWarga:
-
-\begin{table}[H]
-    \centering
-    \small
-    \begin{tabular}{@{} p{2.5cm} p{4.5cm} p{4.5cm} @{} }
-        \toprule
-        \textbf{Teknologi} & \textbf{\textit{Pros}} & \textbf{\textit{Cons}} \\ \midrule
-        \textbf{Node.js} & Ekosistem NPM yang masif; \textit{Development velocity} sangat cepat; sangat baik untuk aplikasi \textit{I/O bound}. & \textit{Single-threaded} per \textit{instance}; satu \textit{unhandled exception} dapat mematikan seluruh proses aplikasi. \\ \midrule
-        \textbf{Go} & Kompilasi cepat ke \textit{binary} tunggal; konkurensi murah melalui \textit{CSP (Communicating Sequential Processes)}; sangat cepat untuk tugas \textit{CPU-bound}. & Manajemen \textit{error} yang repetitif; tidak memiliki model \textit{fault isolation} bawaan di tingkat \textit{runtime} (bergantung pada orkestrasi luar). \\ \midrule
-        \textbf{Elixir} & \textit{Fault tolerance} tingkat tinggi melalui \textit{Supervisor Trees}; \textit{Hot code swapping}; tidak ada \textit{shared state} (menghindari \textit{race conditions}). & Paradigma fungsional memerlukan \textit{learning curve} tambahan; ekosistem \textit{library} lebih spesifik dan tidak sebanyak Node/Go. \\ \bottomrule
-    \end{tabular}
-    \caption{Perbandingan Mendalam \textit{Backend Runtime}}
-\end{table}
-
-\subsubsection{Kesesuaian dengan Aplikasi dan Justifikasi Arsitektural}
-Aplikasi JagaWarga memiliki dua tantangan kritis: lonjakan laporan mendadak (NFR-SC1) dan kebutuhan eskalasi otomatis yang tidak boleh berhenti meskipun terjadi error pada salah satu laporan (NFR-R1). 
-
-Kami mengacu pada filosofi \textbf{Joe Armstrong}, salah satu pencipta Erlang, yang menyatakan:
-\begin{quote}
-    \textit{"If you want to build a system that is reliable, you must build it out of parts that can fail without affecting the whole."}
-\end{quote}
-
-
-
-Filosofi ini diimplementasikan secara \textit{native} oleh Elixir melalui \textit{Supervisor Trees}. Jika proses eskalasi untuk satu laporan gagal (misalnya karena data korup), proses tersebut akan mati (\textit{crash}) secara terisolasi tanpa mengganggu jutaan proses laporan lainnya, dan akan segera dijalankan ulang (\textit{restart}) oleh \textit{Supervisor}. 
-
-Selain itu, penelitian dari tim \textit{engineering} \textbf{Discord} menunjukkan bahwa Elixir mampu menangani lebih dari 11 juta pengguna \textit{concurrent} dengan model \textit{Actor} yang dimilikinya. Hal ini sangat relevan untuk skenario kota dengan 2,5 juta warga, di mana efisiensi memori per proses jauh lebih penting daripada kecepatan CPU mentah.
-
-\subsubsection{Kesimpulan Teknologi Terpilih}
-Berdasarkan analisis di atas, kami memilih \textbf{Elixir (dengan Phoenix Framework)}. Meskipun Go menawarkan eksekusi yang lebih cepat untuk algoritma kompleks, Elixir memberikan \textbf{\textit{Availability}} dan \textbf{\textit{Resilience}} yang tidak tertandingi melalui \textit{BEAM VM}. Keputusan ini secara langsung menjawab tantangan keandalan dan skalabilitas yang menjadi syarat mutlak aplikasi sistem terdistribusi JagaWarga.
-
-\subsection{Analisis Komponen 2: Sistem Basis Data (\textit{Database})}
-Sistem basis data merupakan komponen kritikal yang menyimpan seluruh informasi laporan, metadata multimedia, dan data kewenangan instansi. Untuk kota dengan 2,5 juta penduduk, basis data harus mampu menangani volume data yang besar tanpa mengorbankan konsistensi dan ketersediaan (\textit{availability}).
-
-\subsubsection{Alternatif Teknologi yang Memungkinkan}
-Terdapat tiga kategori basis data yang dievaluasi untuk kebutuhan arsitektur terdistribusi JagaWarga:
-\begin{enumerate}
-    \item \textbf{PostgreSQL:} Basis data relasional (RDBMS) tradisional yang sangat matang dan mendukung transaksi ACID secara penuh.
-    \item \textbf{MongoDB:} Basis data NoSQL berbasis dokumen yang menawarkan skema fleksibel dan kemudahan dalam melakukan \textit{sharding}.
-    \item \textbf{CockroachDB:} Basis data \textit{Distributed SQL} yang dirancang untuk skala \textit{cloud-native} dengan arsitektur \textit{shared-nothing}.
-\end{enumerate}
-
-\subsubsection{\textit{Pros} dan \textit{Cons} Teknologi}
-Berikut adalah evaluasi mendalam terhadap ketiga kandidat basis data:
-
-\begin{table}[H]
-    \centering
-    \small
-    \begin{tabular}{@{} p{2.5cm} p{4.5cm} p{4.5cm} @{} }
-        \toprule
-        \textbf{Teknologi} & \textbf{\textit{Pros}} & \textbf{\textit{Cons}} \\ \midrule
-        \textbf{PostgreSQL} & Dukungan komunitas dan \textit{tooling} sangat luas; konsistensi data sangat terjamin; performa tinggi pada \textit{single-node}. & Sulit untuk melakukan \textit{horizontal scaling} secara otomatis; risiko \textit{single point of failure} tinggi tanpa manajemen \textit{failover} yang kompleks. \\ \midrule
-        \textbf{MongoDB} & Skema JSON-like yang fleksibel; performa tulis yang sangat cepat; \textit{native sharding}. & Konsistensi data sulit dijamin pada transaksi lintas dokumen (\textit{multi-document ACID}) dalam lingkungan terdistribusi. \\ \midrule
-        \textbf{CockroachDB} & \textit{Auto-sharding} dan replikasi otomatis; mendukung transaksi ACID penuh dalam skala terdistribusi; \textit{high availability} secara \textit{native}. & Memerlukan sumber daya memori dan CPU yang lebih besar dibandingkan PostgreSQL konvensional; latensi tulis sedikit lebih tinggi karena mekanisme konsensus. \\ \bottomrule
-    \end{tabular}
-    \caption{Perbandingan Sistem Basis Data}
-\end{table}
-
-\subsubsection{Kesesuaian dengan Aplikasi dan Justifikasi Arsitektural}
-Tantangan utama sistem JagaWarga adalah \textbf{NFR-SC1} (Skalabilitas) dan \textbf{NFR-R1} (Keandalan). Dalam teori \textbf{CAP Theorem} (Consistency, Availability, Partition Tolerance), sistem terdistribusi biasanya harus mengorbankan salah satu aspek. Namun, CockroachDB yang terinspirasi dari makalah \textbf{Google Spanner} berhasil menyeimbangkan ketiganya melalui protokol konsensus \textbf{Raft}.
-
-Dengan CockroachDB, jika terjadi lonjakan laporan mendadak dari 2,5 juta warga, tim infrastruktur cukup menambah node baru ke dalam klaster, dan basis data akan melakukan \textit{re-balancing} data secara otomatis tanpa \textit{downtime}. Selain itu, mekanisme replikasi 3-node menjamin bahwa jika satu pusat data mengalami kegagalan, sistem tetap dapat melayani permintaan warga tanpa kehilangan data sedikitpun.
-
-\subsubsection{Kesimpulan Teknologi Terpilih}
-Dipilih \textbf{CockroachDB} sebagai solusi penyimpanan utama. Meskipun PostgreSQL lebih familiar, kebutuhan akan \textit{horizontal scaling} yang mulus dan jaminan ketersediaan data pada skala kota besar menjadikan CockroachDB sebagai pilihan yang lebih superior untuk memenuhi standar arsitektur terdistribusi yang handal.
-
-\subsection{Analisis Komponen 3: \textit{Message Broker}}
-\textit{Message Broker} berfungsi sebagai tulang punggung komunikasi asinkron antar-layanan. Komponen ini krusial untuk memastikan bahwa layanan utama (\textit{Report Service}) tidak terbebani oleh tugas-tugas sekunder seperti pengiriman notifikasi, integrasi pihak ketiga, dan pengecekan eskalasi.
-
-\subsubsection{Alternatif Teknologi yang Memungkinkan}
-Kami mengevaluasi tiga teknologi \textit{message bus} yang umum digunakan dalam arsitektur terdistribusi:
-\begin{enumerate}
-    \item \textbf{RabbitMQ:} \textit{Message broker} tradisional yang menggunakan protokol AMQP (\textit{Advanced Message Queuing Protocol}).
-    \item \textbf{Apache Kafka:} Platform \textit{event streaming} terdistribusi yang dirancang untuk \textit{throughput} sangat tinggi.
-    \item \textbf{NATS JetStream:} Sistem \textit{messaging cloud-native} yang ringan dengan dukungan persistensi data (\textit{streaming}).
-\end{enumerate}
-
-\subsubsection{\textit{Pros} dan \textit{Cons} Teknologi}
-Berikut adalah tabel analisis perbandingan fitur teknis dari ketiga teknologi tersebut:
-
-\begin{table}[H]
-    \centering
-    \small
-    \begin{tabular}{@{} p{2.5cm} p{4.5cm} p{4.5cm} @{} }
-        \toprule
-        \textbf{Teknologi} & \textbf{\textit{Pros}} & \textbf{\textit{Cons}} \\ \midrule
-        \textbf{RabbitMQ} & Fitur \textit{routing} sangat fleksibel; mendukung banyak protokol; matang secara ekosistem. & Penggunaan memori cukup tinggi untuk setiap antrean; manajemen klaster dan \textit{scaling} horizontal cukup kompleks. \\ \midrule
-        \textbf{Apache Kafka} & \textit{Throughput} luar biasa tinggi; retensi data sangat baik; cocok untuk \textit{big data processing}. & Sangat berat secara \textit{resource}; membutuhkan \textit{Zookeeper} atau konfigurasi \textit{KRaft} yang rumit; \textit{operational overhead} besar untuk tim kecil. \\ \midrule
-        \textbf{NATS JetStream} & Sangat ringan (\textit{single binary}); latensi sangat rendah; mendukung pola \textit{at-least-once delivery} secara \textit{native}. & Fitur \textit{routing} tidak sekompleks RabbitMQ; ekosistem \textit{library} lebih kecil dibanding dua kompetitornya. \\ \bottomrule
-    \end{tabular}
-    \caption{Perbandingan Teknologi \textit{Message Broker}}
-\end{table}
-
-\subsubsection{Analisis Mendalam dan Kesesuaian}
-Tantangan utama sistem JagaWarga dengan 2,5 juta penduduk adalah menangani \textbf{NFR-SC1 (Lonjakan Beban)} dan \textbf{NFR-SC2 (Efisiensi Sumber Daya)}. Analisis kami berfokus pada dua aspek teknis utama:
-
-\begin{enumerate}
-    \item \textbf{\textit{Backpressure Handling}:} Saat terjadi lonjakan laporan (misal: banjir besar), ribuan laporan masuk dalam hitungan detik. Jika kita menggunakan komunikasi sinkron, \textit{Report Service} akan \textit{timeout} menunggu \textit{Notification Service} selesai bekerja. Dengan \textit{Message Broker}, pesan akan ditampung terlebih dahulu. NATS JetStream dipilih karena kemampuannya menyediakan \textit{Pull-based Consumer}. Ini memungkinkan layanan turunan mengambil pesan sesuai dengan kapasitas kemampuannya (\textit{backpressure management}), sehingga tidak terjadi penumpukan memori di sisi \textit{worker}.
-    
-    \item \textbf{\textit{Operational Complexity} vs \textit{Performance}:} Meskipun Apache Kafka memiliki \textit{throughput} lebih tinggi, kompleksitas operasionalnya akan membebani tim pengembangan yang hanya terdiri dari 3 orang. Sebaliknya, NATS ditulis menggunakan bahasa Go dan memiliki ukuran \textit{binary} yang sangat kecil dengan performa yang bersaing. Hal ini sangat mendukung \textbf{NFR-SC2}, di mana penggunaan sumber daya infrastruktur harus tetap efisien saat beban rendah.
-\end{enumerate}
-
-
-
-Kebutuhan akan \textbf{NFR-R1 (Reliability)} juga dipenuhi oleh fitur \textit{JetStream} yang memungkinkan persistensi pesan di disk. Jika \textit{Notification Service} mati total selama satu jam, laporan warga tidak akan hilang; pesan tetap tersimpan di dalam \textit{stream} NATS dan akan diproses secara otomatis segera setelah layanan tersebut aktif kembali.
-
-\subsubsection{Kesimpulan Teknologi Terpilih}
-Dipilih \textbf{NATS JetStream}. Teknologi ini menawarkan keseimbangan terbaik antara performa tinggi, penggunaan sumber daya yang rendah, dan kemudahan manajemen operasional, yang sangat krusial untuk menjaga stabilitas sistem pelaporan warga dalam skala besar.
-
-\subsection{Analisis Komponen 4: \textit{Edge Runtime} (Identitas \& Anonimitas)}
-Layanan Identitas dan Anonimitas bertindak sebagai \textit{gatekeeper} yang memvalidasi identitas warga serta melakukan transformasi data sensitif (\textit{PII scrubbing}) sebelum laporan diteruskan ke layanan inti. Performa pada titik ini sangat krusial agar tidak terjadi \textit{bottleneck} pada alur masuk laporan.
-
-\subsubsection{Alternatif Teknologi yang Memungkinkan}
-Kami mengevaluasi tiga \textit{runtime} JavaScript/TypeScript:
-\begin{enumerate}
-    \item \textbf{Node.js:} \textit{Runtime} paling matang dengan dukungan pustaka keamanan dan validasi yang sangat luas.
-    \item \textbf{Deno:} \textit{Runtime} yang fokus pada keamanan (\textit{secure by default}) dan dukungan \textit{first-class} untuk TypeScript.
-    \item \textbf{Bun:} \textit{Runtime} dan \textit{toolkit} baru yang ditulis menggunakan bahasa Zig, dirancang untuk kecepatan eksekusi dan efisiensi memori yang ekstrem.
-\end{enumerate}
-
-\subsubsection{\textit{Pros} dan \textit{Cons} Teknologi}
-Berikut adalah tabel analisis teknis untuk pemilihan \textit{runtime} pada layanan anonimitas:
-
-\begin{table}[H]
-    \centering
-    \small
-    \begin{tabular}{@{} p{2.5cm} p{4.5cm} p{4.5cm} @{} }
-        \toprule
-        \textbf{Teknologi} & \textbf{\textit{Pros}} & \textbf{\textit{Cons}} \\ \midrule
-        \textbf{Node.js} & Stabilitas tinggi; dukungan pustaka kriptografi (\textit{OpenSSL}) yang sangat matang. & \textit{Cold start} dan penggunaan memori cenderung lebih tinggi dibandingkan \textit{runtime} modern. \\ \midrule
-        \textbf{Deno} & Fitur keamanan \textit{sandbox} bawaan; tidak membutuhkan \textit{node\_modules} (manajemen modul lebih bersih). & Ekosistem belum sebesar Node.js; performa pada beberapa kasus masih di bawah Bun. \\ \midrule
-        \textbf{Bun} & Performa \textit{start-up} dan eksekusi \textit{string manipulation} sangat cepat; penggunaan memori sangat rendah. & Masih dalam tahap pengembangan aktif (\textit{less mature}); beberapa pustaka Node.js mungkin belum kompatibel sepenuhnya. \\ \bottomrule
-    \end{tabular}
-    \caption{Perbandingan \textit{Runtime} JavaScript/TypeScript}
-\end{table}
-
-\subsubsection{Analisis Mendalam dan Kesesuaian}
-Pemilihan teknologi untuk komponen ini didasarkan pada pemenuhan \textbf{NFR-P1 (Performance)} dan \textbf{NFR-S4 (Proteksi Data Pribadi)}:
-
-\begin{enumerate}
-    \item \textbf{Efisiensi Manipulasi Data (PII Scrubbing):} Proses anonimisasi laporan melibatkan pembersihan \textit{metadata}, penghapusan kolom identitas, dan pembuatan ID unik secara massal saat terjadi lonjakan laporan. Bun menggunakan \textit{JavaScriptCore engine} (dari WebKit) yang telah dioptimasi secara mendalam untuk operasi string dan I/O. Hasil uji internal pengembang menunjukkan bahwa Bun mampu menangani permintaan per detik (\textit{Requests Per Second}) hingga 3 kali lipat lebih banyak daripada Node.js pada beban kerja serupa. Hal ini memastikan target \textbf{NFR-P1} tercapai meskipun sistem sedang melakukan enkripsi data pada tiap laporan.
-    
-    \item \textbf{Efisiensi Memori (\textit{Memory Footprint}):} Dalam arsitektur \textit{microservices}, setiap \textit{instance} layanan mengonsumsi sumber daya. Bun dirancang untuk memiliki penggunaan memori yang minimal. Analisis kami menunjukkan bahwa layanan identitas yang dibangun dengan Bun dan \textit{framework} ElysiaJS memiliki \textit{memory footprint} yang jauh lebih kecil dibandingkan tumpukan teknologi Node.js/Express. Hal ini sangat mendukung \textbf{NFR-SC2}, yang memungkinkan kita menjalankan lebih banyak replika layanan (\textit{horizontal scaling}) pada infrastruktur yang sama tanpa membengkakkan biaya sumber daya.
-    
-    \item \textbf{\textit{End-to-End Type Safety}:} Penggunaan TypeScript secara \textit{native} di Bun tanpa perlu proses kompilasi eksternal (\textit{transpilation}) yang lambat meningkatkan kecepatan \textit{development} dan mengurangi risiko \textit{runtime error} pada validasi identitas warga (\textbf{NFR-S3}).
-\end{enumerate}
-
-\subsubsection{Kesimpulan Teknologi Terpilih}
-Dipilih \textbf{Bun (dengan ElysiaJS)}. Kombinasi ini memberikan \textit{throughput} maksimal dan penggunaan memori minimal, menjadikannya pilihan ideal untuk layanan \textit{middleware} anonimitas yang harus memproses ribuan laporan secara cepat namun tetap efisien.
-
-\subsection{Analisis Komponen 5: \textit{API Gateway} / \textit{Edge Proxy}}
-\textit{API Gateway} bertindak sebagai pintu masuk tunggal (\textit{single entry point}) bagi seluruh trafik eksternal. Komponen ini bertanggung jawab atas \textit{SSL/TLS termination}, \textit{load balancing}, dan \textit{routing} permintaan ke berbagai layanan mikro yang sesuai.
-
-\subsubsection{Alternatif Teknologi yang Memungkinkan}
-Kami mengevaluasi tiga solusi \textit{gateway} yang umum digunakan dalam arsitektur \textit{cloud-native}:
-\begin{enumerate}
-    \item \textbf{Nginx:} \textit{Reverse proxy} tradisional yang sangat stabil dan memiliki performa tinggi, namun bersifat statis dalam konfigurasinya.
-    \item \textbf{Kong:} \textit{API Gateway} berbasis Nginx dan Lua yang sangat \textit{powerful} dengan dukungan \textit{plugin} yang luas (seperti \textit{rate limiting}, \textit{auth}, dll).
-    \item \textbf{Traefik:} \textit{Edge router} modern yang ditulis dalam bahasa Go, dirancang khusus untuk arsitektur kontainer dan \textit{microservices}.
-\end{enumerate}
-
-\subsubsection{\textit{Pros} dan \textit{Cons} Teknologi}
-Berikut adalah perbandingan fitur operasional dari ketiga teknologi \textit{gateway} tersebut:
-
-\begin{table}[H]
-    \centering
-    \small
-    \begin{tabular}{@{} p{2.5cm} p{4.5cm} p{4.5cm} @{} }
-        \toprule
-        \textbf{Teknologi} & \textbf{\textit{Pros}} & \textbf{\textit{Cons}} \\ \midrule
-        \textbf{Nginx} & Performa ekstrim; penggunaan memori sangat rendah; standar industri yang matang. & Konfigurasi bersifat statis (memerlukan \textit{reload} saat ada perubahan); sulit untuk manajemen \textit{service discovery} secara otomatis. \\ \midrule
-        \textbf{Kong} & Fitur manajemen API sangat lengkap; mendukung skrip kustom via Lua. & Sangat kompleks; membutuhkan basis data eksternal (PostgreSQL) untuk menyimpan konfigurasi; \textit{resource footprint} cukup besar. \\ \midrule
-        \textbf{Traefik} & Konfigurasi dinamis secara otomatis; \textit{native support} untuk Docker dan Kubernetes; memiliki \textit{dashboard} pemantauan bawaan. & Performa \textit{raw throughput} sedikit di bawah Nginx; fitur manajemen API tingkat lanjut tidak sebanyak Kong. \\ \bottomrule
-    \end{tabular}
-    \caption{Perbandingan Teknologi \textit{API Gateway}}
-\end{table}
-
-\subsubsection{Analisis Mendalam dan Kesesuaian}
-Pemilihan \textit{gateway} pada sistem JagaWarga difokuskan pada pemenuhan \textbf{NFR-O1 (Observability)} dan \textbf{NFR-SC2 (Efisiensi Sumber Daya)}:
-
-\begin{enumerate}
-    \item \textbf{Konfigurasi Dinamis Tanpa \textit{Downtime}:} Dalam arsitektur terdistribusi dengan 2,5 juta pengguna, kita mungkin perlu melakukan \textit{deployment} layanan baru atau melakukan \textit{scaling} secara mendadak. Nginx mewajibkan \textit{reload} konfigurasi yang berisiko memutus koneksi aktif. Traefik bekerja dengan mendengarkan \textit{event} dari Docker API secara langsung. Saat sebuah kontainer \textit{service} baru menyala, Traefik akan secara otomatis mendeteksi, membuat rute, dan melakukan \textit{load balancing} tanpa campur tangan manual. Hal ini menjamin ketersediaan sistem sesuai \textbf{NFR-R1}.
-    
-    \item \textbf{\textit{Native Observability Integration}:} Sesuai dengan kebutuhan \textbf{NFR-O1}, Traefik memiliki dukungan bawaan untuk mengekspor metrik ke Prometheus dan \textit{tracing} ke Jaeger. Kita tidak perlu memasang agen tambahan di sisi \textit{gateway} untuk memantau latensi setiap \textit{endpoint} API, sehingga mengurangi kompleksitas infrastruktur.
-    
-    \item \textbf{Keamanan dan Otomatisasi TLS:} Traefik mendukung integrasi langsung dengan \textit{Let's Encrypt} untuk manajemen sertifikat SSL/TLS secara otomatis. Hal ini memastikan seluruh data warga yang dikirimkan selalu terenkripsi (\textbf{NFR-S5}) tanpa beban operasional dalam memperbarui sertifikat secara berkala.
-\end{enumerate}
-
-\subsubsection{Kesimpulan Teknologi Terpilih}
-Dipilih \textbf{Traefik Proxy}. Kemampuannya dalam melakukan \textit{service discovery} secara otomatis dan integrasi \textit{observability} yang \textit{out-of-the-box} menjadikannya pilihan paling efisien bagi tim kecil untuk mengelola sistem terdistribusi yang kompleks namun tetap \textit{scalable}.
-
-\subsection{Analisis Komponen 6: \textit{Observability Stack}}
-\textit{Observability} adalah fondasi utama dalam sistem terdistribusi untuk memahami kondisi internal sistem melalui \textit{output} eksternal. Mengingat arsitektur \textit{JagaWarga} melibatkan banyak layanan (\textit{Polyglot microservices}), tim operasional memerlukan visualisasi yang jelas untuk melacak aliran data dan mendeteksi kegagalan secara cepat.
-
-\subsubsection{Alternatif Teknologi yang Memungkinkan}
-Kami mengevaluasi tiga ekosistem pemantauan yang populer di industri:
-\begin{enumerate}
-    \item \textbf{ELK Stack (Elasticsearch, Logstash, Kibana):} Ekosistem yang berfokus pada manajemen log terpusat (\textit{log aggregation}).
-    \item \textbf{Prometheus \& Grafana:} Kombinasi pemantauan berbasis metrik deret waktu (\textit{time-series}) dan visualisasi panel kontrol.
-    \item \textbf{OpenTelemetry (OTel):} Standar terbuka untuk pengumpulan \textit{telemetry data} (metrik, log, dan \textit{traces}) yang bersifat \textit{vendor-agnostic}.
-\end{enumerate}
-
-\subsubsection{\textit{Pros} dan \textit{Cons} Teknologi}
-Berikut adalah evaluasi perbandingan untuk kebutuhan pemantauan sistem:
-
-\begin{table}[H]
-    \centering
-    \small
-    \begin{tabular}{@{} p{2.5cm} p{4.5cm} p{4.5cm} @{} }
-        \toprule
-        \textbf{Teknologi} & \textbf{\textit{Pros}} & \textbf{\textit{Cons}} \\ \midrule
-        \textbf{ELK Stack} & Sangat kuat untuk pencarian teks dalam log; fitur analisis data mentah yang sangat detail. & Konsumsi \textit{resource} (RAM/Disk) sangat besar; pengelolaan indeks Elasticsearch sangat kompleks untuk skala besar. \\ \midrule
-        \textbf{Prometheus} & Sangat efisien dalam menyimpan metrik; model \textit{pull-based} yang tidak membebani aplikasi; dukungan \textit{alerting} yang matang. & Tidak dirancang untuk penyimpanan log jangka panjang; visualisasi bawaan sangat terbatas (butuh Grafana). \\ \midrule
-        \textbf{OpenTelemetry} & Satu standar untuk semua jenis data (\textit{logs, metrics, traces}); mendukung instrumentasi pada berbagai bahasa (Elixir, Bun, Go). & Masih memerlukan \textit{backend storage} (seperti Prometheus atau Jaeger) untuk menyimpan datanya. \\ \bottomrule
-    \end{tabular}
-    \caption{Perbandingan Teknologi \textit{Observability}}
-\end{table}
-
-\subsubsection{Analisis Mendalam dan Kesesuaian}
-Pemilihan infrastruktur pemantauan ini didasarkan pada pemenuhan \textbf{NFR-O1 (Monitoring)} dan \textbf{NFR-O2 (Security Monitoring)}:
-
-\begin{enumerate}
-    \item \textbf{Efisiensi Sumber Daya vs Deteksi Masalah:} Dalam sistem dengan 2,5 juta warga, jumlah log yang dihasilkan bisa mencapai hitungan \textit{terabyte} per hari. ELK Stack akan memakan biaya infrastruktur yang sangat besar hanya untuk indeks log. Sebaliknya, Prometheus hanya menyimpan angka (\textit{metrics}) seperti RPS (\textit{Request Per Second}), latensi, dan penggunaan memori. Analisis kami menunjukkan bahwa metrik jauh lebih efektif untuk deteksi dini masalah (\textit{alerting}) dibandingkan log mentah, sesuai dengan prinsip \textbf{NFR-SC2}.
-    
-    \item \textbf{\textit{Distributed Tracing} untuk \textit{Microservices}:} Masalah terbesar pada sistem terdistribusi adalah "di mana \textit{request} ini tertahan?". Dengan menggunakan OpenTelemetry, kita dapat menyematkan \textit{Trace ID} pada setiap laporan warga. Saat laporan dikirim dari Bun (Anonimizer) ke NATS, lalu diproses oleh Elixir (Core), kita bisa melihat visualisasi aliran data tersebut di Grafana. Hal ini krusial untuk memenuhi \textbf{NFR-O1} dalam melacak lalu lintas antar-komponen.
-
-
-
-    \item \textbf{Visibilitas Keamanan (NFR-O2):} Dengan Grafana, kita bisa membuat \textit{dashboard} khusus yang memantau anomali lalu lintas, misalnya lonjakan tajam laporan dari satu alamat IP yang sama, yang membantu tim keamanan dalam mitigasi serangan DDoS tanpa harus melanggar privasi isi laporan warga.
-\end{enumerate}
-
-\subsubsection{Kesimpulan Teknologi Terpilih}
-Dipilih kombinasi \textbf{Prometheus} untuk pengumpulan metrik, \textbf{OpenTelemetry} untuk instrumentasi kode, dan \textbf{Grafana} sebagai pusat visualisasi. Arsitektur ini memberikan visibilitas penuh terhadap kesehatan sistem dengan penggunaan sumber daya yang jauh lebih efisien dibandingkan solusi berbasis log tradisional.
-
-\subsection{Kesimpulan \textit{Tech Stack}}
-
-Berikut adalah tabel yang menyimpulkan \textit{Tech Stack} yang kami gunakan.
-
-\begin{table}[H]
-    \centering
-    \small
-    \begin{tabular}{@{} p{2.5cm} p{2.5cm} p{5.5cm} l @{}}
-        \toprule
-        \textbf{Komponen} & \textbf{Teknologi} & \textbf{Alasan Pemilihan (Hasil Analisis)} & \textbf{Ref. Req} \\ \midrule
-        \textbf{Core Service} & \textbf{Elixir} (Phoenix) & Menjamin \textit{soft real-time performance} dan isolasi kesalahan total melalui \textit{Supervisor Trees} (\textit{Fault Tolerance}). & NFR-R1, NFR-SC1, FR-8 \\ \midrule
-        \textbf{Identity \& Anonymizer} & \textbf{Bun} (ElysiaJS) & Optimal untuk \textit{high-speed string manipulation} pada proses \textit{PII scrubbing} dengan \textit{memory footprint} yang sangat rendah. & NFR-P1, NFR-S2, NFR-S4 \\ \midrule
-        \textbf{Message Broker} & \textbf{NATS JetStream} & Mendukung \textit{pull-based consumer} untuk \textit{backpressure handling} yang efektif saat terjadi lonjakan laporan warga. & NFR-R1, NFR-SC1, FR-4 \\ \midrule
-        \textbf{Main Database} & \textbf{CockroachDB} & Implementasi \textit{Distributed SQL} dengan protokol konsensus Raft untuk menjamin konsistensi data dan \textit{zero-downtime scaling}. & NFR-SC1, NFR-S1, NFR-S5 \\ \midrule
-        \textbf{API Gateway} & \textbf{Traefik Proxy} & Otomatisasi \textit{service discovery} dan konfigurasi dinamis tanpa \textit{reload}, mendukung stabilitas operasional \textit{microservices}. & NFR-S5, NFR-SC2, NFR-R1 \\ \midrule
-        \textbf{Observability} & \textbf{Prometheus, Grafana, OTel} & Efisiensi pemantauan berbasis metrik dan \textit{distributed tracing} untuk melacak aliran laporan antar-layanan secara \textit{end-to-end}. & NFR-O1, NFR-O2 \\ \bottomrule
-    \end{tabular}
-    \caption{Ringkasan Justifikasi Pemilihan \textit{Tech Stack} JagaWarga}
-    \label{tab:tech_stack}
-\end{table}
-
-Pemilihan teknologi di atas didasarkan pada prinsip \textit{Survivability} dan \textit{High Scalability}. Penggunaan \textbf{Elixir} dan \textbf{CockroachDB} secara khusus menjawab tantangan pengelolaan 2,5 juta warga, di mana ketersediaan sistem (\textit{availability}) adalah prioritas utama. Sementara itu, penggunaan \textbf{Bun} pada layanan anonimitas memastikan proses transformasi data tidak menjadi hambatan (\textit{bottleneck}) bagi performa keseluruhan aplikasi (\textbf{NFR-P1}).
-
-\section{Perancangan Proof-of-Concept (PoC)}
-Mengingat kompleksitas sistem \textit{JagaWarga} secara keseluruhan, dilakukan pembatasan lingkup implementasi pada tahap \textit{Proof-of-Concept} (PoC). Fokus PoC adalah membuktikan bahwa arsitektur terdistribusi yang dirancang mampu menangani alur kerja paling kritis dengan tetap menjaga atribut kualitas yang dipersyaratkan.
-
-\subsection{Fungsionalitas Terpilih}
-Fungsionalitas yang dipilih untuk diimplementasikan dalam PoC adalah \textbf{"Alur Pelaporan Anonim dan Mekanisme Eskalasi Otomatis"}. Fitur ini mencakup beberapa kebutuhan fungsional yaitu:
-\begin{itemize}
-    \item \textbf{FR-1 (Pelaporan Anonim):} Warga mengirim laporan, identitas diproses oleh \textit{Anonymizer}, dan data disimpan tanpa tautan ke identitas asli.
-    \item \textbf{FR-5 (Respon Instansi):} Simulasi pihak berwenang menerima dan melihat laporan sesuai kategori.
-    \item \textbf{FR-8 (Eskalasi Otomatis):} \textit{Worker} mendeteksi laporan yang melewati batas waktu (\textit{timeout}) dan mengubah statusnya menjadi "Tereskalasi".
-\end{itemize}
-
-\subsection{Atribut Kualitas Terpilih}
-Atribut kualitas (kebutuhan non-fungsional) yang akan dibuktikan dalam PoC adalah:
-\begin{itemize}
-    \item \textbf{NFR-R1 (Keandalan/Fault Isolation):} Menunjukkan sistem tetap dapat menerima laporan meskipun salah satu layanan (misal: \textit{Notification Service}) sedang tidak tersedia.
-    \item \textbf{NFR-SC1 (Skalabilitas):} Membuktikan penggunaan antrean pesan (\textit{Message Broker}) untuk menangani lonjakan laporan tanpa membebani basis data secara sinkron.
-    \item \textbf{NFR-S4 (Proteksi Data Pribadi):} Memastikan \textit{data scrubbing} pada laporan anonim bekerja di tingkat \textit{backend}.
-    \item \textbf{NFR-S5 (Keamanan Data):} Menunjukkan enkripsi data \textit{in-transit} melalui \textit{TLS/HTTPS} \textit{pada Traefik Gateway,} serta enkripsi \textit{at-rest} pada \textbf{CockroachDB} menggunakan \textit{encryption-at-rest feature}.
-    \item \textbf{NFR-O1 (Monitoring Sistem):} NFR-O1 Menampilkan \textit{dashboard} \textbf{Grafana} yang memvisualisasikan metrik \textit{real-time} sistem (\textit{request rate, latency, message throughput}) untuk membuktikan \textit{observability stack} berfungsi.
-\end{itemize}
-
-\subsection{Alasan Pemilihan}
-Pemilihan fitur dan kualitas di atas didasarkan pada argumen berikut:
-\begin{enumerate}
-    \item \textbf{Representasi Kompleksitas Terdistribusi:} Alur pelaporan anonim hingga eskalasi melibatkan interaksi antar-layanan (Bun, Elixir, dan NATS) serta manipulasi \textit{state} di basis data terdistribusi (CockroachDB). Hal ini merepresentasikan tantangan teknis utama dari sistem.
-    \item \textbf{Pembuktian Janji Arsitektur:} Fitur eskalasi otomatis membuktikan kemampuan sistem dalam menjalankan proses latar belakang (\textit{background job}) secara independen, yang merupakan ciri khas arsitektur \textit{microservices}.
-    \item \textbf{Mitigasi Risiko Keamanan:} Anonimitas adalah fitur paling krusial dalam aplikasi pelaporan warga (untuk \textit{whistleblowing}). Membuktikan fitur ini di tahap PoC menjamin bahwa fondasi keamanan sistem sudah benar sebelum dikembangkan lebih lanjut.
-\end{enumerate}
-
-\section{Detail Implementasi PoC}
-Bagian ini menyajikan teknis implementasi dari \textit{Proof-of-Concept} yang telah dirancang untuk membuktikan fungsionalitas dan kualitas sistem terdistribusi \textit{JagaWarga}.
-
-\subsection{Sumber Kode}
-Seluruh kode sumber untuk layanan \textit{backend}, konfigurasi infrastruktur, dan \textit{gateway} dapat diakses melalui repositori berikut:
-\begin{itemize}
-    \item \textbf{Repositori Utama:} \href{https://github.com/anomali-nangor/jagawarga-poc}{https://github.com/anomali-nangor/jagawarga-poc}
-\end{itemize}
-
-\subsection{Panduan Menjalankan Sistem}
-Sistem telah dikontainerisasi menggunakan Docker untuk memastikan konsistensi lingkungan pengembangan. Berikut adalah langkah-langkah untuk menjalankan PoC:
-
-\begin{lstlisting}[language=bash, caption=Instruksi Menjalankan PoC]
-# 1. Clone repositori
-git clone https://github.com/anomali-nangor/jagawarga-poc.git
-cd jagawarga-poc
-
-# 2. Menjalankan seluruh layanan dan infrastruktur
-# Termasuk CockroachDB Cluster, NATS, Bun Services, dan Elixir Services
-docker-compose up -d
-
-# 3. Verifikasi status container
-docker ps
-\end{lstlisting}
-
-\subsection{Dokumentasi Hasil Implementasi}
-Berikut adalah bukti visual dari komponen sistem yang telah berjalan:
+XOR umpan maju pada langkah terakhir penting karena evolusi GoL tidak injektif. Contoh ekstremnya, semua grid yang selnya mati atau terisolasi berevolusi menjadi grid kosong. Tanpa XOR dengan $R$, banyak nilai $R$ berbeda akan menghasilkan keluaran $F$ yang sama. Dengan XOR tersebut, dua masukan $R \neq R'$ yang tabrakan pada GoL tetap menghasilkan keluaran yang berbeda, karena selisihnya $R \oplus R'$ muncul langsung di keluaran.
 
 \begin{figure}[H]
     \centering
-    % \includegraphics[width=0.8\textwidth]{dashboard_grafana.png} 
-    \small [Placeholder: Screenshot Dashboard Grafana menunjukkan metrik sistem]
-    \caption{Visualisasi Monitoring Sistem melalui Grafana}
-    \label{fig:poc_grafana}
+    \begin{subfigure}[t]{0.47\textwidth}
+        \centering
+        \begin{tikzpicture}[node distance=0.45cm, font=\small]
+            \node[data, minimum width=3.4cm] (in) {$R$ (128 bit)};
+            \node[xorop, below=of in] (x) {};
+            \node[left=0.5cm of x] (k) {$K_i$};
+            \node[blokgol, below=of x, minimum width=3.6cm] (grid) {Susun grid $8 \times 16$ bit};
+            \node[blokgol, below=of grid, minimum width=3.6cm] (gol) {$\mathrm{GoL}^4$: B3/S23, toroidal};
+            \node[blokgol, below=of gol, minimum width=3.6cm] (flat) {Ratakan ke 128 bit};
+            \node[xorop, below=of flat] (x2) {};
+            \node[data, below=of x2, minimum width=3.4cm] (out) {$f_{\text{GoL}}(R, K_i)$};
+            \draw[panah] (in) -- (x);
+            \draw[panah] (k) -- (x);
+            \draw[panah] (x) -- (grid);
+            \draw[panah] (grid) -- (gol);
+            \draw[panah] (gol) -- (flat);
+            \draw[panah] (flat) -- (x2);
+            \draw[panah] (x2) -- (out);
+            \draw[panah] ($(in.south)+(1.2,0)$) -- ++(0,-0.2) -| ($(flat.east)+(0.45,0)$) |- (x2);
+            \node[right, font=\scriptsize, align=left] at ($(gol.east)+(0.5,0)$) {umpan\\maju $R$};
+        \end{tikzpicture}
+        \caption{Fungsi ronde $f_{\text{GoL}}$ (ronde 1 dan 18)}
+        \label{fig:fgol}
+    \end{subfigure}\hfill
+    \begin{subfigure}[t]{0.47\textwidth}
+        \centering
+        \begin{tikzpicture}[node distance=0.45cm, font=\small]
+            \node[data, minimum width=3.4cm] (in) {$R$ (128 bit)};
+            \node[xorop, below=of in] (x) {};
+            \node[left=0.5cm of x] (k) {$K_i$};
+            \node[blokspn, below=of x, minimum width=3.6cm] (sb) {\code{SubBytes} (Kotak-S)};
+            \node[blokspn, below=of sb, minimum width=3.6cm] (sr) {\code{ShiftRows}};
+            \node[blokspn, below=of sr, minimum width=3.6cm] (mc) {\code{MixColumns}};
+            \node[addop, below=of mc] (add) {};
+            \node[left=0.5cm of add] (k2) {$K_i$};
+            \node[blokspn, below=of add, minimum width=3.6cm] (rot) {$\rotl \rho(Y)$ (128 bit)};
+            \node[data, below=of rot, minimum width=3.4cm] (out) {$f_{\text{SPN}}(R, K_i)$};
+            \draw[panah] (in) -- (x);
+            \draw[panah] (k) -- (x);
+            \draw[panah] (x) -- node[right, font=\scriptsize] {$X$} (sb);
+            \draw[panah] (sb) -- (sr);
+            \draw[panah] (sr) -- (mc);
+            \draw[panah] (mc) -- (add);
+            \draw[panah] (k2) -- (add);
+            \draw[panah] (add) -- node[right, font=\scriptsize] {$Y$} (rot);
+            \draw[panah] (rot) -- (out);
+        \end{tikzpicture}
+        \caption{Fungsi ronde $f_{\text{SPN}}$ (ronde 2--17)}
+        \label{fig:fspn}
+    \end{subfigure}
+    \caption{Dua jenis fungsi ronde pada \algname}
+    \label{fig:fungsi-ronde}
 \end{figure}
+
+\subsection{Implementasi Game of Life Secara Bit-Paralel}
+Setiap baris grid disimpan sebagai satu bilangan bulat (\textit{bitmask}), sehingga satu generasi GoL dihitung per baris dengan operasi bitwise, bukan per sel. Untuk baris $r$, delapan tetangga diperoleh dari baris di atas, baris itu sendiri, dan baris di bawahnya (indeks modulo jumlah baris), masing-masing dalam versi asli serta versi yang dirotasi satu bit ke kiri dan ke kanan. Rotasi ini mewujudkan batas toroidal pada arah horizontal.
+
+Kedelapan \textit{bitmask} tetangga dijumlahkan secara paralel untuk 16 sel sekaligus menggunakan pohon penjumlah ala Wallace \cite{wallace1964} (\cref{fig:wallace}). Hasilnya berupa tiga \textit{bitmask}: $c_0$ (bit ke-0 jumlah tetangga), $c_1$ (bit ke-1), dan $c_{\ge4}$ (jumlah tetangga $\geq 4$). Aturan B3/S23 kemudian cukup dihitung dengan
+\begin{equation}
+    s' = \underbrace{(c_1 \wedge \lnot c_{\ge 4})}_{N \in \{2,3\}} \wedge (c_0 \vee s),
+\end{equation}
+yang secara aljabar sama dengan $(N = 3) \vee (s \wedge N \in \{2,3\})$.
 
 \begin{figure}[H]
     \centering
-    % \includegraphics[width=0.8\textwidth]{nats_logs.png}
-    \small [Placeholder: Screenshot Log NATS JetStream saat terjadi Event Pelaporan]
-    \caption{Log Aliran Pesan Asinkron pada Message Broker}
-    \label{fig:poc_nats}
+    \begin{tikzpicture}[font=\small, every node/.style={inner sep=2pt},
+        fa/.style={rectangle, draw, fill=green!12, minimum width=0.9cm, minimum height=0.6cm},
+        ha/.style={rectangle, draw, fill=green!5, minimum width=0.9cm, minimum height=0.6cm}]
+        \foreach \i/\n in {0/{nw},1/n,2/{ne},3/w,4/e,5/{sw},6/s,7/{se}} {
+            \node (n\i) at (\i*1.05, 0) {$n_{\n}$};
+        }
+        \node[fa] (fa1) at (1.05,-1.2) {FA};
+        \node[fa] (fa2) at (4.2,-1.2) {FA};
+        \node[ha] (ha1) at (6.82,-1.2) {HA};
+        \foreach \i in {0,1,2} \draw[-Stealth] (n\i.south) -- (fa1.north);
+        \foreach \i in {3,4,5} \draw[-Stealth] (n\i.south) -- (fa2.north);
+        \foreach \i in {6,7} \draw[-Stealth] (n\i.south) -- (ha1.north);
+
+        \node[fa] (fa3) at (2.2,-2.6) {FA};
+        \node[fa] (fa4) at (5.5,-2.6) {FA};
+        \draw[-Stealth] (fa1.south) -- (fa3.north);
+        \draw[-Stealth] (fa2.south) -- (fa3.north);
+        \draw[-Stealth] (ha1.south west) -- (fa3.north east);
+        \draw[-Stealth, dashed] (fa1.south east) -- (fa4.north west);
+        \draw[-Stealth, dashed] (fa2.south east) -- (fa4.north);
+        \draw[-Stealth, dashed] (ha1.south) -- (fa4.north east);
+
+        \node[ha] (ha2) at (4.0,-3.9) {HA};
+        \draw[-Stealth, dashed] (fa3.south east) -- (ha2.north west);
+        \draw[-Stealth] (fa4.south) -- (ha2.north east);
+
+        \node[draw, rounded corners, fill=gray!8] (c0) at (1.0,-5.1) {$c_0$ (bobot 1)};
+        \node[draw, rounded corners, fill=gray!8] (c1) at (4.0,-5.1) {$c_1$ (bobot 2)};
+        \node[circle, draw, inner sep=1pt, font=\scriptsize] (or) at (6.9,-4.0) {OR};
+        \node[draw, rounded corners, fill=gray!8] (c4) at (6.9,-5.1) {$c_{\ge4}$};
+        \draw[-Stealth] (fa3.south) -- (c0.north);
+        \draw[-Stealth] (ha2.south) -- (c1.north);
+        \draw[-Stealth, dashed] (fa4.south east) -- (or.north);
+        \draw[-Stealth, dashed] (ha2.east) -- (or.west);
+        \draw[-Stealth] (or.south) -- (c4.north);
+    \end{tikzpicture}
+    \caption{Pohon penjumlah untuk menghitung jumlah tetangga 16 sel sekaligus (FA = \textit{full adder}, HA = \textit{half adder}; garis putus-putus = \textit{carry})}
+    \label{fig:wallace}
 \end{figure}
 
-\section{Asumsi-Asumsi Perancangan}
-Dalam menyusun rancangan arsitektur dan implementasi PoC ini, diambil beberapa asumsi sebagai batasan ruang lingkup:
+\section{Fungsi Ronde \texorpdfstring{$f_{\text{SPN}}$}{f-SPN}}
+\label{sec:fspn}
+Fungsi ronde SPN didefinisikan sebagai
+\begin{align}
+    X &= R \oplus K, \nonumber\\
+    Y &= \mathrm{MixColumns}\big(\mathrm{ShiftRows}(\mathrm{SubBytes}(X))\big) \boxplus K, \label{eq:fspn}\\
+    f_{\text{SPN}}(R, K) &= Y \rotl \rho(Y), \qquad \rho(Y) = \big((5 \cdot y_0 + y_{15}) \oplus y_8\big) \bmod 128, \nonumber
+\end{align}
+dengan $y_j$ byte ke-$j$ dari $Y$ dan rotasi dilakukan pada $Y$ sebagai bilangan 128 bit \textit{big-endian}. Alurnya ditunjukkan pada \cref{fig:fspn}.
+
+\subsection{Susunan State}
+Sebanyak 16 byte $X = x_0 x_1 \dots x_{15}$ disusun menjadi matriks $4 \times 4$ \textbf{baris demi baris}. Susunan ini berbeda dengan AES yang mengisi \textit{state} kolom demi kolom. Akibatnya, \code{ShiftRows} menggeser byte yang berurutan di dalam masukan, sedangkan \code{MixColumns} mencampur byte yang berjarak 4 posisi (lihat \cref{tab:shiftrows}).
+
+\subsection{Kotak-S (SubBytes)}
+Setiap byte disubstitusi dengan Kotak-S AES (\cref{tab:sbox}). Kotak-S ini dipilih setelah iterasi desain. Versi awal rancangan kami menggunakan Kotak-S afin $S(x) = (167x + 91) \bmod 256$, tetapi analisis pada \cref{sec:iterasi-sbox} menunjukkan bahwa Kotak-S afin meloloskan selisih \code{0x80} dengan peluang 1. Kotak-S AES memiliki keseragaman diferensial 4 dan bias linear maksimum 16/256. Kedua nilai ini merupakan yang terbaik yang diketahui untuk permutasi 8 bit.
+
+\input{contents/tabel-sbox.tex}
+
+\subsection{ShiftRows dan MixColumns}
+\code{ShiftRows} merotasi baris ke-$i$ ($i = 0,1,2,3$) ke kiri sejauh $i$ byte (\cref{tab:shiftrows}). \code{MixColumns} mengalikan setiap kolom $(a_0, a_1, a_2, a_3)^T$ dengan matriks MDS AES di GF($2^8$):
+\begin{equation}
+    \begin{bmatrix} b_0 \\ b_1 \\ b_2 \\ b_3 \end{bmatrix} =
+    \begin{bmatrix} 02 & 03 & 01 & 01 \\ 01 & 02 & 03 & 01 \\ 01 & 01 & 02 & 03 \\ 03 & 01 & 01 & 02 \end{bmatrix}
+    \begin{bmatrix} a_0 \\ a_1 \\ a_2 \\ a_3 \end{bmatrix},
+\end{equation}
+dengan perkalian $02 \cdot a = (a \ll 1) \oplus (\texttt{0x1B} \text{ jika bit 7 } a = 1)$ dan $03 \cdot a = (02 \cdot a) \oplus a$. Kedua tabel perkalian ini dihitung di awal sebagai tabel \textit{lookup}.
+
+\begin{table}[H]
+    \centering
+    \caption{Susunan \textit{state} $4\times4$ sebelum dan sesudah \code{ShiftRows} (indeks byte masukan)}
+    \label{tab:shiftrows}
+    \begin{tabular}{cccc c cccc}
+        \multicolumn{4}{c}{\textbf{Sebelum}} & \quad & \multicolumn{4}{c}{\textbf{Sesudah}} \\
+        \cmidrule{1-4} \cmidrule{6-9}
+        $x_0$ & $x_1$ & $x_2$ & $x_3$ & & $x_0$ & $x_1$ & $x_2$ & $x_3$ \\
+        $x_4$ & $x_5$ & $x_6$ & $x_7$ & $\xrightarrow{\;\ll 1\;}$ & $x_5$ & $x_6$ & $x_7$ & $x_4$ \\
+        $x_8$ & $x_9$ & $x_{10}$ & $x_{11}$ & $\xrightarrow{\;\ll 2\;}$ & $x_{10}$ & $x_{11}$ & $x_8$ & $x_9$ \\
+        $x_{12}$ & $x_{13}$ & $x_{14}$ & $x_{15}$ & $\xrightarrow{\;\ll 3\;}$ & $x_{15}$ & $x_{12}$ & $x_{13}$ & $x_{14}$ \\
+    \end{tabular}
+\end{table}
+
+\subsection{Penjumlahan Modular dan Rotasi Bergantung Data}
+Setelah \code{MixColumns}, \textit{state} dijumlahkan dengan \textit{round key} per byte modulo 256 ($\boxplus$). Kunci dengan demikian masuk dua kali ke $f_{\text{SPN}}$ melalui dua operasi dari struktur aljabar yang berbeda: XOR (penjumlahan di GF(2)) dan penjumlahan bilangan bulat modulo 256. Pencampuran kedua operasi ini, seperti pada IDEA dan RC6 \cite{rivest1998}, mempersulit analisis yang hanya bekerja di satu struktur aljabar.
+
+Langkah terakhir adalah rotasi kiri 128 bit sejauh $\rho(Y) \in [0, 127]$ yang dihitung dari tiga byte $Y$ sendiri. Ide ini diambil dari RC5/RC6. Karena besar rotasi bergantung pada data, penyerang tidak dapat memprediksi posisi bit keluaran tanpa mengetahui nilai antara. Rotasi juga memindahkan bit melintasi batas byte, sehingga melengkapi \code{MixColumns} yang hanya bekerja di dalam kolom.
+
+\section{Penjadwalan Kunci (Round Key)}
+\label{sec:keysched}
+Penjadwalan kunci menurunkan 18 \textit{round key} 128 bit dari kunci $K$ dan \textit{nonce} $N$. Gagasan utamanya adalah menjadikan kunci sebagai konfigurasi awal Game of Life, lalu mengambil \textit{round key} dari hasil evolusinya setelah di-\textit{whitening}. Alur lengkapnya ditunjukkan pada \cref{fig:keysched}.
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[node distance=0.42cm, font=\small]
+        \node[data] (k) {Kunci $K$ ($\geq$ 32 byte)};
+        \node[blokkunci, below=of k, minimum width=7.4cm] (fold) {(1) Validasi, lalu \textit{hash}: $k_0 \dots k_{31} = \mathrm{SHA\text{-}256}(K)$};
+        \node[blokkunci, below=of fold, minimum width=7.4cm] (mix) {(2) Campur: $m_i = (k_i \rotl (n_i \bmod 8)) \oplus n_i$};
+        \node[blokkunci, below=of mix, minimum width=7.4cm] (spiral) {(3) Isi spiral grid $16\times16$: sel ke-$j$ $= (m_{j \bmod 32} + 31\lfloor j/32 \rfloor) \bmod 256$};
+        \node[blokkunci, below=of spiral, minimum width=7.4cm] (par) {(4) Paritas tiap sel $\Rightarrow$ pola biner $\mathrm{Pola}(K, N)$};
+        \node[blok, below=0.55cm of par, minimum width=4cm] (g0) {$G \leftarrow \mathrm{Pola}(K, N)$};
+
+        \node[blokgol, below=0.7cm of g0, minimum width=7.4cm] (reinj) {(5) $N_r = \mathrm{RotByte}(N, r) \oplus (17r \bmod 256)$;\; $P_r = \mathrm{Pola}(K, N_r)$;\; $G \leftarrow G \oplus P_r$};
+        \node[blokgol, below=of reinj, minimum width=7.4cm] (evo) {(6) $G \leftarrow \mathrm{GoL}^4(G)$ pada grid $16 \times 16$ toroidal};
+        \node[blokgol, below=of evo, minimum width=7.4cm] (rk) {(7) \textit{Whitening} $W = G \oplus P_r$;\; $K_r = W_{\text{baris }0\text{--}7} \oplus W_{\text{baris }8\text{--}15}$};
+        \node[keputusan, below=0.5cm of rk] (cek) {$r < 18$?};
+        \node[data, below=0.5cm of cek] (out) {$K_1, K_2, \dots, K_{18}$};
+
+        \node[data, right=1.0cm of mix] (n) {\textit{Nonce} $N$};
+
+        \draw[panah] (k) -- (fold);
+        \draw[panah] (fold) -- (mix);
+        \draw[panah] (mix) -- (spiral);
+        \draw[panah] (spiral) -- (par);
+        \draw[panah] (par) -- (g0);
+        \draw[panah] (g0) -- node[right] {$r = 1$} (reinj);
+        \draw[panah] (reinj) -- (evo);
+        \draw[panah] (evo) -- (rk);
+        \draw[panah] (rk) -- (cek);
+        \draw[panah] (cek) -- node[right] {tidak} (out);
+        \draw[panah] (cek.west) -- node[above] {ya} ($(cek.west -| reinj.west)+(-0.5,0)$) |- node[pos=0.25, left] {$r \leftarrow r+1$} (reinj.west);
+        \draw[panah] (n) -- (mix);
+        \draw[panah] (n.south) |- (reinj.east);
+
+        \begin{scope}[on background layer]
+            \node[draw, dashed, rounded corners, fill=violet!3, fit=(fold)(par), inner sep=5pt, label={[font=\scriptsize, anchor=south east]north east:fungsi $\mathrm{Pola}(K, N)$}] {};
+        \end{scope}
+    \end{tikzpicture}
+    \caption{Alur penjadwalan kunci berbasis Game of Life}
+    \label{fig:keysched}
+\end{figure}
+
+Rincian setiap langkahnya adalah sebagai berikut.
 \begin{enumerate}
-    \item \textbf{Validitas Identitas:} Sistem mengasumsikan bahwa data kependudukan (NIK/KTP) yang dikirimkan warga sudah divalidasi oleh layanan pihak ketiga eksternal yang terpercaya. PoC hanya fokus pada cara sistem menangani data tersebut setelah divalidasi.
-    \item \textbf{Penyimpanan Multimedia:} Dokumen multimedia (foto/video) dalam PoC diasumsikan disimpan dalam \textit{local volume} yang terikat pada kontainer \textit{Report Service}, bukan pada \textit{Object Storage} (seperti S3) yang terdistribusi secara geografis.
-    \item \textbf{Waktu Eskalasi:} Untuk kebutuhan demonstrasi, waktu tunggu eskalasi otomatis (FR-8) dipercepat dari satuan hari menjadi satuan detik/menit agar perubahan status dapat terlihat secara \textit{real-time}.
-    \item \textbf{Integrasi Eksternal:} Sistem eksternal yang disebutkan pada FR-7 disimulasikan sebagai sebuah \textit{mock webhook} yang mencatat penerimaan data laporan tanpa melakukan pemrosesan lebih lanjut.
-    \item \textbf{Keamanan Jaringan:} Seluruh komunikasi antar-layanan di dalam \textit{private network} Docker diasumsikan aman, namun komunikasi publik melalui \textit{Gateway} tetap diwajibkan menggunakan protokol HTTPS/TLS.
+    \item \textbf{Validasi dan \textit{hashing}.} Kunci minimal 32 byte (256 bit). Kunci sepanjang apa pun di-\textit{hash} dengan SHA-256 menjadi 32 byte $k_0, \dots, k_{31}$, sehingga setiap byte kunci memengaruhi seluruh materi kunci dan tidak ada dua kunci berbeda yang (secara praktis) menghasilkan materi yang sama.
+    \item \textbf{Pencampuran dengan \textit{nonce}.} Setiap byte kunci dirotasi kiri 8 bit sejauh $n_i \bmod 8$, lalu di-XOR dengan $n_i$ (byte \textit{nonce} ke-$i$). Untuk \textit{nonce} tetap, langkah ini merupakan bijeksi pada setiap byte.
+    \item \textbf{Pengisian spiral.} Ke-32 byte $m_i$ diisikan ke grid $16 \times 16$ mengikuti spiral searah jarum jam dari pojok kiri atas ke pusat (\cref{fig:spiral}). Karena grid memiliki 256 sel, materi 32 byte berulang sebanyak 8 putaran. Pada putaran ke-$\ell$ ($\ell = 0, \dots, 7$), nilainya ditambah $31\ell$ modulo 256 agar setiap putaran tidak sekadar menyalin putaran sebelumnya.
+    \item \textbf{Paritas.} Setiap sel diganti dengan paritas jumlah bit 1-nya ($\mathrm{popcount} \bmod 2$), sehingga diperoleh grid biner $16 \times 16$ (256 bit) dengan kepadatan sel hidup sekitar 0,5.
+    \item \textbf{Injeksi ulang \textit{nonce}.} Pada ronde ke-$r$, \textit{nonce} dirotasi sejauh $r$ byte dan setiap byte-nya di-XOR dengan $17r \bmod 256$. Pola baru $\mathrm{Pola}(K, N_r)$ dihitung dengan langkah 1--4, lalu di-XOR ke grid. Injeksi ulang mencegah grid mati atau terjebak pada pola periodik (osilator atau \textit{still life}), sehingga setiap ronde menerima entropi baru dari kunci.
+    \item \textbf{Evolusi.} Grid dievolusikan 4 generasi Game of Life pada grid toroidal $16 \times 16$.
+    \item \textbf{\textit{Whitening} dan pelipatan.} Grid hasil evolusi di-XOR sekali lagi dengan pola injeksi $P_r$ dari langkah 5, menghasilkan $W = G \oplus P_r$. Grid 256 bit $W$ kemudian dilipat menjadi \textit{round key} 128 bit dengan meng-XOR-kan 8 baris atas dengan 8 baris bawah. Langkah \textit{whitening} ini menyeimbangkan proporsi bit 1 pada \textit{round key} (\cref{sec:rk-density}). Grid yang dibawa ke ronde berikutnya tetap $G$ (hasil evolusi tanpa \textit{whitening}).
 \end{enumerate}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.42\textwidth]{spiral.pdf}
+    \caption{Urutan pengisian spiral grid $16 \times 16$. Garis oranye menunjukkan urutan sel, dan warna menunjukkan putaran materi kunci ke-$\ell$ (32 sel per putaran).}
+    \label{fig:spiral}
+\end{figure}
+
+\Cref{fig:ks-stages} menunjukkan contoh nyata tahapan penjadwalan kunci untuk kunci \code{"kunci-\allowbreak rahasia-\allowbreak minimal-\allowbreak 32-byte!!!"} dengan \textit{nonce} $N = \mathrm{SHA\text{-}256}(\texttt{"IF4020"})$. \textit{Round key} pertama yang dihasilkan adalah
+\begin{center}
+    $K_1 = $ \code{f9ec878321d2537857cb46413165e4f2}.
+\end{center}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.86\textwidth]{ks_stages.pdf}
+    \caption{Contoh tahapan penjadwalan kunci pada ronde pertama. Sel hitam bernilai 1 (hidup); panel (a) menampilkan nilai byte 0--255 dalam skala abu-abu. Panel (f) adalah grid yang dilipat menjadi $K_1$.}
+    \label{fig:ks-stages}
+\end{figure}
+
+\section{Dekripsi}
+\label{sec:dekripsi}
+Karena memakai struktur Feistel, dekripsi blok menggunakan prosedur yang sama dengan enkripsi, tetapi \textit{round key} dipakai dengan urutan terbalik. Masukan $C$ dipecah menjadi $L'_0 \Vert R'_0 = R_{18} \Vert L_{18}$, lalu untuk $j = 1, \dots, 18$ dengan indeks kunci $i = 19 - j$:
+\begin{equation}
+    L'_j = R'_{j-1}, \qquad R'_j = L'_{j-1} \oplus F_i(R'_{j-1}, K_i).
+\end{equation}
+Jenis fungsi ronde mengikuti indeks kunci $i$, bukan urutan eksekusi $j$. Dengan demikian, ronde dekripsi pertama memakai $f_{\text{GoL}}$ dengan $K_{18}$, dan ronde terakhir memakai $f_{\text{GoL}}$ dengan $K_1$ (\cref{tab:urutan-dekripsi}). Kebenaran dekripsi dapat ditunjukkan dengan induksi. Pada ronde pertama, $R'_1 = R_{18} \oplus F_{18}(L_{18}, K_{18}) = R_{18} \oplus F_{18}(R_{17}, K_{18}) = L_{17}$ dan $L'_1 = R_{17}$. Pola yang sama berulang hingga $R'_{18} \Vert L'_{18}$ bernilai $L_0 \Vert R_0 = P$. Pembuktian ini tidak memerlukan $f_{\text{GoL}}$ maupun $f_{\text{SPN}}$ untuk dapat dibalik.
+
+\begin{table}[H]
+    \centering
+    \caption{Urutan ronde pada enkripsi dan dekripsi}
+    \label{tab:urutan-dekripsi}
+    \begin{tabular}{c cc c cc}
+        \toprule
+        \multirow{2}{*}{\textbf{Urutan}} & \multicolumn{2}{c}{\textbf{Enkripsi}} & & \multicolumn{2}{c}{\textbf{Dekripsi}} \\
+        \cmidrule{2-3} \cmidrule{5-6}
+        & Kunci & Fungsi & & Kunci & Fungsi \\
+        \midrule
+        1 & $K_1$ & $f_{\text{GoL}}$ & & $K_{18}$ & $f_{\text{GoL}}$ \\
+        2 & $K_2$ & $f_{\text{SPN}}$ & & $K_{17}$ & $f_{\text{SPN}}$ \\
+        $\vdots$ & $\vdots$ & $\vdots$ & & $\vdots$ & $\vdots$ \\
+        17 & $K_{17}$ & $f_{\text{SPN}}$ & & $K_2$ & $f_{\text{SPN}}$ \\
+        18 & $K_{18}$ & $f_{\text{GoL}}$ & & $K_1$ & $f_{\text{GoL}}$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{Mode Operasi}
+\label{sec:mode}
+\algname{} mendukung lima mode operasi standar \cite{sp80038a} dengan ukuran blok penuh 256 bit (\cref{tab:mode}). \textit{Nonce} berperan ganda. Pada semua mode, \textit{nonce} dipakai dalam penjadwalan kunci. Pada mode selain ECB, \textit{nonce} juga menjadi IV atau nilai awal \textit{counter}. Pemakaian ganda ini aman karena \textit{nonce} dibangkitkan secara acak untuk setiap pesan, dan IV memang tidak perlu dirahasiakan.
+
+\begin{table}[H]
+    \centering
+    \caption{Mode operasi yang didukung ($E$/$D$ = enkripsi/dekripsi satu blok, $C_0 = O_0 = N$)}
+    \label{tab:mode}
+    \small
+    \begin{tabularx}{\textwidth}{l l l Y}
+        \toprule
+        \textbf{Mode} & \textbf{Enkripsi} & \textbf{Dekripsi} & \textbf{Keterangan} \\
+        \midrule
+        ECB & $C_i = E(P_i)$ & $P_i = D(C_i)$ & Blok identik dalam satu pesan menghasilkan \textit{ciphertext} identik \\
+        CBC & $C_i = E(P_i \oplus C_{i-1})$ & $P_i = D(C_i) \oplus C_{i-1}$ & Mode bawaan \\
+        CFB & $C_i = P_i \oplus E(C_{i-1})$ & $P_i = C_i \oplus E(C_{i-1})$ & CFB blok penuh (256 bit), hanya memakai $E$ \\
+        OFB & $O_i = E(O_{i-1}),\ C_i = P_i \oplus O_i$ & sama dengan enkripsi & Aliran kunci tidak bergantung pada pesan \\
+        CTR & $C_i = P_i \oplus E(N + i - 1)$ & sama dengan enkripsi & $N$ dibaca sebagai bilangan bulat 256 bit \textit{big-endian} \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+\section{Padding dan Format Ciphertext}
+\label{sec:padding}
+\textit{Padding} PKCS\#7 diterapkan pada semua mode dengan ukuran blok 32 byte: sebanyak $p = 32 - (|P| \bmod 32)$ byte bernilai $p$ ditambahkan, dengan $1 \le p \le 32$. Pesan yang panjangnya tepat kelipatan 32 tetap mendapat satu blok \textit{padding} penuh (32 byte bernilai \code{0x20}), sehingga \textit{padding} selalu dapat dibuang tanpa ambiguitas. Saat dekripsi, \textit{padding} divalidasi: nilai $p$ harus berada di rentang 1--32 dan $p$ byte terakhir harus semuanya bernilai $p$. Jika tidak, dekripsi gagal dengan \code{ValueError}. Format keluaran akhirnya ditunjukkan pada \cref{fig:format}.
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[font=\small, cell/.style={draw, minimum height=0.8cm, align=center}]
+        \node[cell, fill=violet!12, minimum width=2.4cm] (n) at (0,0) {\textit{nonce} $N$\\32 B};
+        \node[cell, fill=orange!12, minimum width=2.0cm, right=0pt of n] (c1) {$C_1$\\32 B};
+        \node[cell, fill=orange!12, minimum width=2.0cm, right=0pt of c1] (c2) {$C_2$\\32 B};
+        \node[cell, fill=orange!6, minimum width=1.4cm, right=0pt of c2] (cd) {$\cdots$};
+        \node[cell, fill=orange!22, minimum width=2.6cm, right=0pt of cd] (cn) {$C_n$ (32 B)\\memuat \textit{padding}};
+        \draw[decorate, decoration={brace, amplitude=5pt, mirror}] ($(n.south west)+(0,-0.1)$) -- ($(cn.south east)+(0,-0.1)$) node[midway, below=6pt] {$32 + 32 \cdot (\lfloor |P|/32 \rfloor + 1)$ byte $\xrightarrow{\text{Base64}}$ keluaran \code{encrypt()}};
+    \end{tikzpicture}
+    \caption{Format \textit{ciphertext} \algname}
+    \label{fig:format}
+\end{figure}

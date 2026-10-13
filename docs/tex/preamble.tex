@@ -1,12 +1,12 @@
 % --- Core ---
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
+\usepackage{lmodern}
 \usepackage[margin=2.5cm]{geometry}
 \usepackage{enumitem}
 
 % --- Math & Symbols ---
-\usepackage{amsmath, amssymb, amsfonts, amsthm}
-\usepackage{cancel}
+\usepackage{amsmath, amssymb, amsfonts}
 
 % --- UI & Layout ---
 \usepackage{parskip} % Spasi antar paragraf, tanpa indentasi
@@ -16,7 +16,9 @@
 \usepackage{subcaption} % Untuk sub-figures
 \usepackage{booktabs}   % Tabel cantik ( \toprule, \midrule, \bottomrule )
 \usepackage{array}
-\usepackage{lipsum}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{longtable}
 
 % --- Colors & Links ---
 \usepackage[dvipsnames]{xcolor}
@@ -30,56 +32,86 @@
 \definecolor{backcolour}{rgb}{0.95,0.95,0.92}
 
 \lstset{
-    backgroundcolor=\color{backcolour},   
+    backgroundcolor=\color{backcolour},
     commentstyle=\color{codegreen},
     keywordstyle=\color{magenta},
     numberstyle=\tiny\color{codegray},
     stringstyle=\color{codepurple},
     basicstyle=\ttfamily\small,
-    breakatwhitespace=false,         
-    breaklines=true,                 
-    captionpos=b,                    
-    keepspaces=true,                 
-    numbers=left,                    
-    numbersep=5pt,                  
-    showspaces=false,                
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
     showstringspaces=false,
-    showtabs=false,                  
-    tabsize=2
+    showtabs=false,
+    tabsize=4
 }
 
 % --- Diagrams (TikZ) ---
 \usepackage{tikz}
-\usepackage{tikz-network}
-\usetikzlibrary{trees, graphs, arrows.meta, shapes.geometric, positioning}
+\usetikzlibrary{arrows.meta, shapes.geometric, shapes.misc, positioning, calc, fit, backgrounds, matrix, decorations.pathreplacing}
 
-% --- Boxes (tcolorbox) ---
-\usepackage[breakable]{tcolorbox}
-\tcbuselibrary{theorems}
-
-\newtcbtheorem[number within=chapter]{definisi}{Definisi}%
-{breakable, colback=green!5,colframe=green!35!black,fonttitle=\bfseries}{def}
-
-\newtcbtheorem[number within=chapter]{teorema}{Teorema}%
-{breakable, colback=blue!5,colframe=blue!35!black,fonttitle=\bfseries}{th}
-
-\newtcbtheorem[number within=chapter]{contoh}{Contoh}%
-{breakable, colback=red!5,colframe=red!35!black,fonttitle=\bfseries}{ex}
+\tikzset{
+    blok/.style={rectangle, draw, rounded corners=2pt, fill=blue!6, align=center, minimum height=0.8cm, font=\small},
+    blokgol/.style={blok, fill=green!12},
+    blokspn/.style={blok, fill=orange!14},
+    blokkunci/.style={blok, fill=violet!10},
+    data/.style={rectangle, draw, fill=gray!8, align=center, minimum height=0.7cm, font=\small},
+    keputusan/.style={diamond, draw, aspect=2, fill=yellow!12, align=center, font=\small, inner sep=1pt},
+    xorop/.style={circle, draw, inner sep=0pt, minimum size=0.45cm, path picture={
+        \draw (path picture bounding box.north) -- (path picture bounding box.south)
+              (path picture bounding box.west) -- (path picture bounding box.east);}},
+    addop/.style={rectangle, draw, inner sep=0pt, minimum size=0.42cm, path picture={
+        \draw (path picture bounding box.north) -- (path picture bounding box.south)
+              (path picture bounding box.west) -- (path picture bounding box.east);}},
+    panah/.style={-Stealth, thick},
+    garis/.style={thick},
+}
 
 % --- Header & Footer ---
 \usepackage{fancyhdr}
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\small IF4031 - JagaWarga}
+\fancyhead[L]{\small IF4020 Kriptografi -- \algname}
 \fancyhead[R]{\small \leftmark}
 \fancyfoot[C]{\thepage}
+\setlength{\headheight}{14pt}
 
 % --- Referencing ---
 \usepackage[noabbrev, capitalize]{cleveref}
 \graphicspath{{images/}}
 
 \renewcommand{\contentsname}{Daftar Isi}
+\renewcommand{\listfigurename}{Daftar Gambar}
+\renewcommand{\listtablename}{Daftar Tabel}
 \renewcommand{\chaptername}{Bab}
+\renewcommand{\appendixname}{Lampiran}
 \renewcommand{\figurename}{Gambar}
 \renewcommand{\tablename}{Tabel}
-\renewcommand{\bibname}{Daftar Pustaka} % Untuk document class report/book
+\renewcommand{\bibname}{Daftar Pustaka}
+\renewcommand{\lstlistingname}{Kode}
+
+\crefname{chapter}{Bab}{Bab}
+\crefname{section}{Subbab}{Subbab}
+\crefname{subsection}{Subbab}{Subbab}
+\crefname{figure}{Gambar}{Gambar}
+\crefname{table}{Tabel}{Tabel}
+\crefname{equation}{Persamaan}{Persamaan}
+\crefname{lstlisting}{Kode}{Kode}
+\crefname{listing}{Kode}{Kode}
+\crefname{appendix}{Lampiran}{Lampiran}
+\crefname{enumi}{Langkah}{Langkah}
+
+% --- Notasi ---
+\newcommand{\algname}{Pregnant\_\allowbreak Sister}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\setlength{\emergencystretch}{3em}
+\newcommand{\isi}[1]{\textcolor{red}{\textbf{[#1]}}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\rotl}{\mathbin{\lll}}
+
+% build-remote.bat mengemas src/ di samping main.tex; kompilasi lokal membaca ../../src
+\IfFileExists{src/feistel.py}{\def\srcdir{src}}{\def\srcdir{../../src}}
