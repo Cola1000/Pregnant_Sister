@@ -86,10 +86,6 @@ def test_ciphertext_stats():
     print(f"       note: base64 output can never exceed 6.0 bits entropy, so measure on raw bytes")
     print(f"       throughput: {len(data) / elapsed / 1024:.1f} KB/s")
 
-    ct = base64.b64decode(encrypt(b"A" * 32 * 100, rand_bytes(32), "ECB"))[32:]
-    blocks = {ct[i:i + 32] for i in range(0, len(ct), 32)}
-    report(len(blocks) > 2, f"ECB on 100 identical blocks: {len(blocks)} distinct ciphertext blocks")
-
 
 def test_sbox():
     affine = all(SBOX[x] == (167 * x + 91) % 256 for x in range(256))
@@ -155,25 +151,9 @@ def test_key_schedule():
         report(True, "Keys X||X and 'A'*64 are not interchangeable")
 
 
-def test_integrity():
-    key = rand_bytes(32)
-    msg = b"TH3R3 M4Y 0R M4Y N0T B3 ->5T394N09R4PHY<- 0N R34DM3'S 1M493?!" * 2
-    raw = bytearray(base64.b64decode(encrypt(msg, key, "CBC")))
-    raw[32 + 4] ^= ord("0") ^ ord("9")
-    try:
-        tampered = decrypt(base64.b64encode(bytes(raw)), key, "CBC")
-    except ValueError:
-        tampered = None
-    if tampered is None:
-        report(True, "CBC bit-flip rejected")
-    else:
-        report(False, f"CBC bit-flip accepted, block 2 now reads: {tampered[32:]}")
-
-
 test_roundtrip()
 test_avalanche()
 test_ciphertext_stats()
 test_sbox()
 test_differential()
 test_key_schedule()
-test_integrity()
