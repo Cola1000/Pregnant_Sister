@@ -1,9 +1,2 @@
 # Auto detect text files and perform LF normalization
 * text=auto
-
-# Release "Source code" archives only contain the library
-/* export-ignore
-/src -export-ignore
-/requirements.txt -export-ignore
-/README.md -export-ignore
-/image.jpg -export-ignore

@@ -50,7 +50,7 @@ assert decrypt(ct, key, mode="OFB") == data
 \end{lstlisting}
 \end{minipage}
 
-Pustaka ini didistribusikan melalui halaman \textit{Releases} di GitHub. Setiap kali kode di folder \code{src} atau berkas \code{requirements.txt} berubah di \textit{branch} \code{main}, GitHub Actions otomatis membuat rilis baru berisi arsip \code{pregnant\_sister-vX.Y.Z.zip} (dan \code{.tar.gz}). Arsip ini hanya memuat folder \code{src} dan \code{requirements.txt}, tanpa \textit{test}, laporan, maupun dokumentasi. Arsip kode sumber yang dibuat otomatis oleh GitHub juga dibatasi pada kedua isi tersebut melalui atribut \code{export-ignore} di \code{.gitattributes}. Pengguna cukup mengekstrak arsip, menjalankan \code{pip install -r requirements.txt}, lalu mengimpor \code{src.encrypt} dan \code{src.decrypt}.
+Pustaka ini didistribusikan melalui halaman \textit{Releases} di GitHub. Setiap kali ada perubahan di \textit{branch} \code{main}, GitHub Actions otomatis membuat rilis baru berisi arsip \code{pregnant\_sister-vX.Y.Z.zip} (dan \code{.tar.gz}). Arsip ini memuat seluruh isi repositori: kode pustaka (\code{src}), \code{requirements.txt}, \textit{test} beserta berkas ujinya, laporan, dan dokumentasi API. Pengguna cukup mengekstrak arsip, menjalankan \code{pip install -r requirements.txt}, lalu mengimpor \code{src.encrypt} dan \code{src.decrypt} atau menjalankan skrip pengujian dari akar arsip.
 
 Dokumentasi API lengkap dipublikasikan di \url{https://cola1000.github.io/Pregnant_Sister/} (\cref{fig:api}). Dokumentasi ini memuat cara instalasi dari rilis, parameter dan tipe data kedua fungsi, format \textit{ciphertext}, mode operasi, contoh penggunaan, penanganan galat, serta catatan keamanan.
 

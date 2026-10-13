@@ -1,14 +1,8 @@
-name: Release library
+name: Release
 
 on:
   push:
     branches: [main]
-    paths:
-      - "src/**"
-      - "requirements.txt"
-      - ".github/workflows/release.yml"
-      - "README.md"
-      - "image.jpg"
   workflow_dispatch:
 
 permissions:
@@ -27,14 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Package src, requirements.txt, and README
+      - name: Package repository
         run: |
-          mkdir -p dist/pregnant_sister
-          cp -r src requirements.txt README.md image.jpg dist/pregnant_sister/
-          find dist -type d -name __pycache__ -prune -exec rm -rf {} +
-          cd dist
-          zip -qr "pregnant_sister-${VERSION}.zip" pregnant_sister
-          tar -czf "pregnant_sister-${VERSION}.tar.gz" pregnant_sister
+          mkdir -p dist
+          git archive --format=zip --prefix=pregnant_sister/ -o "dist/pregnant_sister-${VERSION}.zip" HEAD
+          git archive --format=tar.gz --prefix=pregnant_sister/ -o "dist/pregnant_sister-${VERSION}.tar.gz" HEAD
 
       - name: Publish release
         run: |
@@ -44,5 +35,5 @@ jobs:
             gh release create "$VERSION" dist/*.zip dist/*.tar.gz \
               --target "$GITHUB_SHA" \
               --title "Pregnant_Sister $VERSION" \
-              --notes "Pustaka Pregnant_Sister (folder src/ dan requirements.txt) dari commit ${GITHUB_SHA::7}. Ekstrak arsip, jalankan pip install -r requirements.txt, lalu impor dengan from src.encrypt import encrypt. Dokumentasi: https://cola1000.github.io/Pregnant_Sister/"
+              --notes "Seluruh isi repositori Pregnant_Sister (kode pustaka src/, test, laporan, dan dokumentasi API) dari commit ${GITHUB_SHA::7}. Ekstrak arsip, jalankan pip install -r requirements.txt, lalu impor dengan from src.encrypt import encrypt. Dokumentasi: https://cola1000.github.io/Pregnant_Sister/"
           fi

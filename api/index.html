@@ -124,27 +124,25 @@ print(pt.decode("utf-8"))   # My Sister is Pregnant, I'm gonna be a dad!
         <div class="overflow-hidden content-section" id="content-install">
             <h2>Instalasi</h2>
             <pre><code class="bash">
-# Opsi 1: unduh rilis (hanya kode pustaka)
-# dari halaman Releases di GitHub, lalu
-# ekstrak pregnant_sister-vX.Y.Z.zip
+# Opsi 1: unduh dari halaman Releases
 cd pregnant_sister
 python -m venv venv
 source venv/bin/activate      # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# Opsi 2: clone repositori (beserta test dan laporan)
+# Opsi 2: clone repositori
 git clone https://github.com/Cola1000/Pregnant_Sister.git
 cd Pregnant_Sister
 pip install -r requirements.txt
                 </code></pre>
             <p>
-                Cara termudah adalah mengunduh berkas <code class="higlighted">pregnant_sister-vX.Y.Z.zip</code> dari halaman <a href="https://github.com/Cola1000/Pregnant_Sister/releases/latest">Releases</a>. Rilis hanya berisi folder <code class="higlighted">src</code> dan <code class="higlighted">requirements.txt</code>. Rilis baru dibuat otomatis setiap kali kode pustaka di branch <code class="higlighted">main</code> berubah.
+                Cara termudah adalah mengunduh berkas <code class="higlighted">pregnant_sister-vX.Y.Z.zip</code> dari halaman <a href="https://github.com/Cola1000/Pregnant_Sister/releases/latest">Releases</a>. Rilis berisi seluruh isi repositori: kode pustaka (<code class="higlighted">src</code>), <code class="higlighted">requirements.txt</code>, test, laporan, dan dokumentasi API. Rilis baru dibuat otomatis setiap kali ada perubahan di branch <code class="higlighted">main</code>.
             </p>
             <p>
                 Dibutuhkan Python 3.10 atau lebih baru (dikembangkan dengan Python 3.13). Fungsi <code class="higlighted">encrypt()</code> dan <code class="higlighted">decrypt()</code> hanya memakai pustaka standar. Paket <code class="higlighted">numpy</code> dan <code class="higlighted">matplotlib</code> dari <code class="higlighted">requirements.txt</code> hanya dibutuhkan oleh modul analisis <code class="higlighted">src.analysis</code>.
             </p>
             <p>
-                Jalankan skrip dari folder yang berisi folder <code class="higlighted">src</code> (misalnya <code class="higlighted">python skrip.py</code> dengan <code class="higlighted">skrip.py</code> diletakkan di samping <code class="higlighted">src</code>), agar <code class="higlighted">from src.encrypt import encrypt</code> dapat diimpor.
+                Jalankan skrip dari akar/root repositori, yaitu folder yang berisi folder <code class="higlighted">src</code> (misalnya <code class="higlighted">python skrip.py</code> dengan <code class="higlighted">skrip.py</code> diletakkan di samping <code class="higlighted">src</code>), agar <code class="higlighted">from src.encrypt import encrypt</code> dapat diimpor. Test dijalankan dari folder yang sama, misalnya <code class="higlighted">python -m test.test_security</code>.
             </p>
         </div>
         <div class="overflow-hidden content-section" id="content-encrypt">
